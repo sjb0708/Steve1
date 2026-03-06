@@ -1,0 +1,114 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id          String   @id @default(cuid())
+  name        String
+  email       String   @unique
+  password    String
+  role        Role     @default(HOST)
+  phone       String?
+  avatarUrl   String?
+  bio         String?
+  location    String?
+  hourlyRate  Float?
+  rating      Float    @default(5.0)
+  reviewCount Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  properties      Property[]
+  jobsAsHost      Job[]      @relation("HostJobs")
+  jobsAsCleaner   Job[]      @relation("CleanerJobs")
+  reviewsGiven    Review[]   @relation("ReviewsGiven")
+  reviewsReceived Review[]   @relation("ReviewsReceived")
+}
+
+model Property {
+  id               String   @id @default(cuid())
+  hostId           String
+  name             String
+  address          String
+  city             String
+  state            String
+  bedrooms         Int
+  bathrooms        Float
+  description      String?
+  imageUrl         String?
+  icalUrl          String?
+  cleaningDuration Int
+  cleaningRate     Float
+  platform         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  host User  @relation(fields: [hostId], references: [id])
+  jobs Job[]
+}
+
+model Job {
+  id            String    @id @default(cuid())
+  propertyId    String
+  hostId        String
+  cleanerId     String?
+  status        JobStatus @default(OPEN)
+  scheduledDate DateTime
+  duration      Int
+  price         Float
+  notes         String?
+  checkoutDate  DateTime?
+  checkinDate   DateTime?
+  platform      String?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  property       Property        @relation(fields: [propertyId], references: [id])
+  host           User            @relation("HostJobs", fields: [hostId], references: [id])
+  cleaner        User?           @relation("CleanerJobs", fields: [cleanerId], references: [id])
+  checklistItems ChecklistItem[]
+  review         Review?
+}
+
+model ChecklistItem {
+  id        String  @id @default(cuid())
+  jobId     String
+  label     String
+  completed Boolean @default(false)
+  room      String?
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  jobId      String   @unique
+  reviewerId String
+  revieweeId String
+  rating     Int
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  job      Job  @relation(fields: [jobId], references: [id])
+  reviewer User @relation("ReviewsGiven", fields: [reviewerId], references: [id])
+  reviewee User @relation("ReviewsReceived", fields: [revieweeId], references: [id])
+}
+
+enum Role {
+  HOST
+  CLEANER
+}
+
+enum JobStatus {
+  OPEN
+  ASSIGNED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
