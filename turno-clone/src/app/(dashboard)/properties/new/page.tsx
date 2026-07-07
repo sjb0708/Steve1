@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { Select } from "@/components/ui/Select"
 import { motion } from "framer-motion"
-import { Building2, Link2, MapPin, Bed, Bath, Clock, DollarSign, Check } from "lucide-react"
+import { Building2, Link2, MapPin, Bed, Bath, Clock, Check, DollarSign } from "lucide-react"
 
 const US_STATES = ["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"]
 
@@ -15,34 +15,52 @@ export default function NewPropertyPage() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
   const [form, setForm] = useState({
     name: "", address: "", city: "", state: "FL",
     bedrooms: "3", bathrooms: "2",
-    cleaningDuration: "180", cleaningRate: "150",
-    description: "", icalUrl: "", platform: "AIRBNB",
+    cleaningDuration: "180",
+    cleaningFee: "",
+    description: "",
+    airbnbIcalUrl: "",
+    vrboIcalUrl: "",
   })
 
   const update = (key: string, val: string) => setForm((f) => ({ ...f, [key]: val }))
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (step < 3) { setStep(step + 1); return }
+    if (step < 2) { setStep(step + 1); return }
+
     setLoading(true)
-    setTimeout(() => {
-      setLoading(false)
+    setError("")
+    try {
+      const res = await fetch("/api/properties", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error || "Failed to create property")
+        setLoading(false)
+        return
+      }
       router.push("/properties")
-    }, 1000)
+    } catch {
+      setError("Network error. Please try again.")
+      setLoading(false)
+    }
   }
 
   const steps = [
     { label: "Property Info", icon: Building2 },
-    { label: "Booking Details", icon: Link2 },
-    { label: "Cleaning Setup", icon: Clock },
+    { label: "iCal & Setup", icon: Link2 },
   ]
 
   return (
     <div className="min-h-screen">
-      <Header title="Add New Property" subtitle="Connect a new vacation rental to your account" />
+      <Header title="Add New Property" subtitle="Connect a new vacation rental" />
 
       <div className="p-6 max-w-2xl">
         {/* Stepper */}
@@ -62,22 +80,25 @@ export default function NewPropertyPage() {
           ))}
         </div>
 
+        {error && (
+          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">{error}</div>
+        )}
+
         <form onSubmit={handleSubmit}>
-          <motion.div key={step} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}>
+          <motion.div key={step} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3 }}>
             <Card>
               {step === 1 && (
                 <div className="space-y-5">
                   <div>
                     <h2 className="text-lg font-bold text-slate-900 mb-1">Property Information</h2>
-                    <p className="text-sm text-slate-500">Tell us about your rental property.</p>
+                    <p className="text-sm text-slate-500">Basic details about your rental property.</p>
                   </div>
-                  <Input label="Property name" placeholder="e.g. Oceanview Retreat" value={form.name}
+                  <Input label="Property name" placeholder="e.g. Beautiful Home with Pool" value={form.name}
                     onChange={(e) => update("name", e.target.value)} required />
-                  <Input label="Street address" icon={MapPin} placeholder="1247 Collins Ave"
+                  <Input label="Street address" icon={MapPin} placeholder="123 Main St"
                     value={form.address} onChange={(e) => update("address", e.target.value)} required />
                   <div className="grid grid-cols-2 gap-4">
-                    <Input label="City" placeholder="Miami Beach" value={form.city}
+                    <Input label="City" placeholder="Ocala" value={form.city}
                       onChange={(e) => update("city", e.target.value)} required />
                     <Select label="State" value={form.state} onChange={(e) => update("state", e.target.value)}
                       options={US_STATES.map((s) => ({ value: s, label: s }))} />
@@ -100,58 +121,52 @@ export default function NewPropertyPage() {
               {step === 2 && (
                 <div className="space-y-5">
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900 mb-1">Booking Platform</h2>
-                    <p className="text-sm text-slate-500">Connect your calendar to auto-schedule cleanings.</p>
+                    <h2 className="text-lg font-bold text-slate-900 mb-1">iCal & Cleaning Setup</h2>
+                    <p className="text-sm text-slate-500">Connect your booking calendars and set cleaning time.</p>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-slate-700 mb-3">Platform</p>
-                    <div className="grid grid-cols-3 gap-3">
-                      {[
-                        { value: "AIRBNB", label: "Airbnb", color: "rose" },
-                        { value: "VRBO", label: "VRBO", color: "blue" },
-                        { value: "MANUAL", label: "Manual", color: "slate" },
-                      ].map((p) => (
-                        <button key={p.value} type="button" onClick={() => update("platform", p.value)}
-                          className={`py-3 px-4 rounded-xl border-2 text-sm font-semibold transition-all ${form.platform === p.value ? `border-${p.color}-500 bg-${p.color}-50 text-${p.color}-700` : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>
-                          {p.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {form.platform !== "MANUAL" && (
-                    <Input label="iCal URL" icon={Link2}
-                      placeholder="https://www.airbnb.com/calendar/ical/..."
-                      value={form.icalUrl} onChange={(e) => update("icalUrl", e.target.value)}
-                      hint="Find this in your Airbnb/VRBO account under Calendar settings" />
-                  )}
-                  <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
-                    <p className="text-sm font-semibold text-blue-800 mb-1">How calendar sync works</p>
-                    <p className="text-sm text-blue-600">We check your calendar every hour. When a guest checks out, we automatically create a cleaning job 30 minutes before the next check-in.</p>
-                  </div>
-                </div>
-              )}
 
-              {step === 3 && (
-                <div className="space-y-5">
+                  <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                    <p className="text-sm font-semibold text-blue-800 mb-1">How to find your iCal URL</p>
+                    <p className="text-sm text-blue-600">
+                      Airbnb: Calendar → Export Calendar<br />
+                      VRBO: Calendar → Subscribe — copy the .ics link
+                    </p>
+                  </div>
+
+                  <Input label="Airbnb iCal URL (optional)" icon={Link2}
+                    placeholder="https://www.airbnb.com/calendar/ical/..."
+                    value={form.airbnbIcalUrl} onChange={(e) => update("airbnbIcalUrl", e.target.value)} />
+
+                  <Input label="VRBO iCal URL (optional)" icon={Link2}
+                    placeholder="https://www.vrbo.com/calendar/ical/..."
+                    value={form.vrboIcalUrl} onChange={(e) => update("vrboIcalUrl", e.target.value)} />
+
+                  <Input
+                    label="Cleaning Fee ($)"
+                    type="number"
+                    icon={DollarSign}
+                    placeholder="0.00"
+                    value={form.cleaningFee}
+                    onChange={(e) => update("cleaningFee", e.target.value)}
+                    min="0"
+                    step="0.01"
+                  />
+
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900 mb-1">Cleaning Setup</h2>
-                    <p className="text-sm text-slate-500">Set your cleaning duration and rate for this property.</p>
+                    <Select label="Cleaning duration" value={form.cleaningDuration}
+                      onChange={(e) => update("cleaningDuration", e.target.value)}
+                      options={[
+                        { value: "60", label: "1 hour" },
+                        { value: "90", label: "1.5 hours" },
+                        { value: "120", label: "2 hours" },
+                        { value: "150", label: "2.5 hours" },
+                        { value: "180", label: "3 hours" },
+                        { value: "240", label: "4 hours" },
+                        { value: "300", label: "5 hours" },
+                        { value: "360", label: "6 hours" },
+                      ]} />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Select label="Cleaning duration" value={form.cleaningDuration}
-                        onChange={(e) => update("cleaningDuration", e.target.value)}
-                        options={[
-                          { value: "60", label: "1 hour" }, { value: "90", label: "1.5 hours" },
-                          { value: "120", label: "2 hours" }, { value: "150", label: "2.5 hours" },
-                          { value: "180", label: "3 hours" }, { value: "240", label: "4 hours" },
-                          { value: "300", label: "5 hours" }, { value: "360", label: "6 hours" },
-                        ]} />
-                    </div>
-                    <Input label="Cleaning rate ($)" type="number" icon={DollarSign}
-                      value={form.cleaningRate} onChange={(e) => update("cleaningRate", e.target.value)}
-                      min="50" step="5" hint="Per cleaning job" />
-                  </div>
+
                   <div className="p-5 bg-emerald-50 rounded-2xl border border-emerald-100 space-y-2">
                     <p className="font-semibold text-emerald-800">Summary</p>
                     <div className="grid grid-cols-2 gap-3 text-sm">
@@ -159,13 +174,14 @@ export default function NewPropertyPage() {
                         { label: "Property", value: form.name || "—" },
                         { label: "Location", value: form.city && form.state ? `${form.city}, ${form.state}` : "—" },
                         { label: "Size", value: `${form.bedrooms} bed / ${form.bathrooms} bath` },
-                        { label: "Platform", value: form.platform },
-                        { label: "Cleaning Rate", value: `$${form.cleaningRate}` },
-                        { label: "Duration", value: `${parseInt(form.cleaningDuration) / 60} hours` },
+                        { label: "Airbnb iCal", value: form.airbnbIcalUrl ? "Connected" : "Not set" },
+                        { label: "VRBO iCal", value: form.vrboIcalUrl ? "Connected" : "Not set" },
+                        { label: "Clean Duration", value: `${parseInt(form.cleaningDuration) / 60} hr${parseInt(form.cleaningDuration) > 60 ? "s" : ""}` },
+                        { label: "Cleaning Fee", value: form.cleaningFee ? `$${parseFloat(form.cleaningFee).toFixed(2)}` : "Not set" },
                       ].map((row) => (
                         <div key={row.label}>
                           <p className="text-emerald-600 text-xs">{row.label}</p>
-                          <p className="font-semibold text-emerald-900">{row.value}</p>
+                          <p className="font-semibold text-emerald-900 text-sm">{row.value}</p>
                         </div>
                       ))}
                     </div>
@@ -180,7 +196,7 @@ export default function NewPropertyPage() {
                   </Button>
                 )}
                 <Button type="submit" size="lg" className="flex-1" loading={loading}>
-                  {step < 3 ? "Continue" : "Add Property"}
+                  {step < 2 ? "Continue" : "Add Property"}
                 </Button>
               </div>
             </Card>

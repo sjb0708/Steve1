@@ -2,9 +2,18 @@ import { SignJWT, jwtVerify } from "jose"
 import { cookies } from "next/headers"
 import type { JwtPayload } from "@/types"
 
-const secret = new TextEncoder().encode(
-  process.env.JWT_SECRET || "fallback-secret-change-in-production"
-)
+function getJwtSecret(): Uint8Array {
+  const value = process.env.JWT_SECRET
+  if (!value) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("JWT_SECRET is required in production")
+    }
+    return new TextEncoder().encode("dev-only-fallback-do-not-use-in-production")
+  }
+  return new TextEncoder().encode(value)
+}
+
+const secret = getJwtSecret()
 
 const COOKIE_NAME = "bdc_auth"
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 7 // 7 days

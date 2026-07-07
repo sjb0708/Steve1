@@ -13,10 +13,8 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "BDG Cleaning | Smart Vacation Rental Cleaning",
-  description:
-    "The smartest way to manage cleaning for your Airbnb and VRBO properties. Auto-schedule, find trusted cleaners, and never miss a turnover.",
-  keywords: "vacation rental cleaning, Airbnb cleaning, VRBO cleaning, property management, turnover cleaning",
+  title: "Bailey Development Group | Cleaning Management",
+  description: "Private cleaning management for Bailey Development Group vacation rental properties.",
 }
 
 export default function RootLayout({

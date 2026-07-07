@@ -25,7 +25,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const data = await res.json()
         setUser(data.user)
       } else {
+        // Cookie exists but user not found in DB (e.g. after a re-seed) — clear it and redirect
         setUser(null)
+        await fetch("/api/auth/logout", { method: "POST" })
+        window.location.href = "/login"
+        return
       }
     } catch {
       setUser(null)

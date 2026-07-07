@@ -22,10 +22,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid email or password" }, { status: 401 })
     }
 
+    // Cleaners must be approved before they can log in
+    if (user.role === "CLEANER" && !user.approved) {
+      return NextResponse.json(
+        { error: "Your account is pending approval. You will be notified once approved." },
+        { status: 403 }
+      )
+    }
+
     const token = await signToken({
       userId: user.id,
       email: user.email,
-      role: user.role as "HOST" | "CLEANER",
+      role: user.role as "ADMIN" | "CLEANER",
       name: user.name,
     })
 
@@ -37,8 +45,7 @@ export async function POST(req: NextRequest) {
         role: user.role,
         avatarUrl: user.avatarUrl,
         location: user.location,
-        rating: user.rating,
-        reviewCount: user.reviewCount,
+        approved: user.approved,
       },
     })
 

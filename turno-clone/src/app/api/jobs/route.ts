@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { assignCleanerToJob, buildChecklistItems } from "@/lib/jobs"
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,18 +12,20 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get("status")
     const limit = parseInt(searchParams.get("limit") || "50")
 
-    const where = user.role === "HOST"
-      ? { hostId: user.userId, ...(status ? { status: status as never } : {}) }
-      : { cleanerId: user.userId, ...(status ? { status: status as never } : {}) }
+    // Admins see all jobs; cleaners only see their assigned jobs
+    const where =
+      user.role === "ADMIN"
+        ? { ...(status ? { status: status as never } : {}) }
+        : { cleanerId: user.userId, ...(status ? { status: status as never } : {}) }
 
     const jobs = await prisma.job.findMany({
       where,
       include: {
         property: true,
-        host: { select: { id: true, name: true, email: true, avatarUrl: true, rating: true } },
-        cleaner: { select: { id: true, name: true, email: true, avatarUrl: true, rating: true } },
-        checklistItems: true,
-        review: true,
+        host: { select: { id: true, name: true, email: true, avatarUrl: true } },
+        cleaner: { select: { id: true, name: true, email: true, avatarUrl: true, phone: true } },
+        booking: true,
+        checklistItems: { orderBy: { order: "asc" } },
       },
       orderBy: { scheduledDate: "asc" },
       take: limit,
@@ -38,46 +41,46 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser()
-    if (!user || user.role !== "HOST") return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!user || user.role !== "ADMIN") return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
     const body = await req.json()
-    const { propertyId, scheduledDate, notes, checkoutDate, checkinDate, platform } = body
+    const { propertyId, scheduledDate, notes, bookingId, cleanerId } = body
 
-    const property = await prisma.property.findUnique({ where: { id: propertyId } })
-    if (!property || property.hostId !== user.userId) {
-      return NextResponse.json({ error: "Property not found" }, { status: 404 })
-    }
+    const property = await prisma.property.findUnique({
+      where: { id: propertyId },
+      include: { checklistTemplate: { include: { items: { orderBy: { order: "asc" } } } } },
+    })
+    if (!property) return NextResponse.json({ error: "Property not found" }, { status: 404 })
 
-    const job = await prisma.job.create({
+    // Use checklist template items if available, otherwise use defaults
+    const checklistItems = buildChecklistItems(property)
+
+    const created = await prisma.job.create({
       data: {
         propertyId,
         hostId: user.userId,
         scheduledDate: new Date(scheduledDate),
         duration: property.cleaningDuration,
-        price: property.cleaningRate,
         notes: notes || null,
-        checkoutDate: checkoutDate ? new Date(checkoutDate) : null,
-        checkinDate: checkinDate ? new Date(checkinDate) : null,
-        platform: platform || "MANUAL",
-        status: "OPEN",
-        checklistItems: {
-          create: [
-            { label: "Vacuum all floors", room: "General" },
-            { label: "Mop hard floors", room: "General" },
-            { label: "Clean bathrooms (toilet, sink, shower/tub)", room: "Bathroom" },
-            { label: "Replace towels and toiletries", room: "Bathroom" },
-            { label: "Make all beds with fresh linens", room: "Bedroom" },
-            { label: "Dust all surfaces and furniture", room: "Bedroom" },
-            { label: "Clean kitchen counters and appliances", room: "Kitchen" },
-            { label: "Clean inside/outside of microwave", room: "Kitchen" },
-            { label: "Empty all trash cans", room: "General" },
-            { label: "Wipe down mirrors and glass surfaces", room: "General" },
-            { label: "Check and restock supplies", room: "General" },
-            { label: "Final walkthrough and staging", room: "General" },
-          ],
-        },
+        bookingId: bookingId || null,
+        status: "UNASSIGNED",
+        checklistItems: { create: checklistItems },
       },
-      include: { property: true, checklistItems: true },
+    })
+
+    // Assignment always goes through the accept/decline flow — never straight to ASSIGNED
+    if (cleanerId) {
+      await assignCleanerToJob(created.id, cleanerId)
+    }
+
+    const job = await prisma.job.findUnique({
+      where: { id: created.id },
+      include: {
+        property: true,
+        cleaner: { select: { id: true, name: true, email: true, avatarUrl: true } },
+        booking: true,
+        checklistItems: { orderBy: { order: "asc" } },
+      },
     })
 
     return NextResponse.json({ job }, { status: 201 })
