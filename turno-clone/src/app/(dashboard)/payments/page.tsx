@@ -7,11 +7,12 @@ import { Button } from "@/components/ui/Button"
 import { Avatar } from "@/components/ui/Avatar"
 import { Spinner } from "@/components/ui/Spinner"
 import { formatCurrency, formatDate } from "@/lib/utils"
-import { differenceInDays } from "date-fns"
+import { differenceInDays, isSameMonth } from "date-fns"
 import {
-  DollarSign, Clock, CheckCircle2, Building2, TrendingUp, AlertCircle,
+  DollarSign, Clock, CheckCircle2, Building2, TrendingUp, AlertCircle, CalendarDays,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
+import type { Job } from "@/types"
 
 type Payment = {
   id: string
@@ -171,10 +172,22 @@ function AdminPayments({
   markingPaid: string | null
 }) {
   const [filter, setFilter] = useState<FilterView>("awaiting")
+  const [jobs, setJobs] = useState<Job[]>([])
+
+  useEffect(() => {
+    fetch("/api/jobs?limit=200")
+      .then((r) => r.json())
+      .then((d) => setJobs(d.jobs || []))
+      .catch(() => {})
+  }, [])
 
   const now = new Date()
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
   const startOfYear = new Date(now.getFullYear(), 0, 1)
+
+  const monthJobs = jobs.filter((j) => isSameMonth(new Date(j.scheduledDate), now) && j.status !== "CANCELLED")
+  const monthScheduledRevenue = monthJobs.reduce((a, j) => a + (j.property?.cleaningFee ?? 0), 0)
+  const monthNeedsCleaner = monthJobs.filter((j) => j.status === "UNASSIGNED").length
 
   const unpaid = payments.filter((p) => p.status === "UNPAID")
   const paid = payments.filter((p) => p.status === "PAID")
@@ -201,6 +214,22 @@ function AdminPayments({
 
   return (
     <div className="p-6 max-w-4xl space-y-6">
+      {/* This month's schedule at a glance — moved here from Calendar so the
+          calendar page stays focused on the schedule itself */}
+      {monthJobs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 text-sm text-slate-600 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3">
+          <span className="flex items-center gap-1.5 font-medium text-slate-500">
+            <CalendarDays className="w-3.5 h-3.5" /> This month&apos;s schedule:
+          </span>
+          <span><b className="text-slate-900">{monthJobs.length}</b> job{monthJobs.length !== 1 ? "s" : ""}</span>
+          <span><b className="text-slate-900">{monthJobs.filter((j) => j.status === "COMPLETED").length}</b> completed</span>
+          {monthNeedsCleaner > 0 && (
+            <span className="text-amber-600"><b>{monthNeedsCleaner}</b> need{monthNeedsCleaner === 1 ? "s" : ""} a cleaner</span>
+          )}
+          <span><b className="text-slate-900">{formatCurrency(monthScheduledRevenue)}</b> scheduled</span>
+        </div>
+      )}
+
       {/* Clickable filter stat cards */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}

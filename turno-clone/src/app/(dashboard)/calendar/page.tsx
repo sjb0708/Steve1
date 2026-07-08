@@ -38,8 +38,8 @@ const STATUS_PILL: Record<string, string> = {
   CANCELLED: "bg-slate-100 text-slate-500",
 }
 
-const BAR_ROW_HEIGHT = 24
-const HEADER_ROW_HEIGHT = 34
+const BAR_ROW_HEIGHT = 34
+const HEADER_ROW_HEIGHT = 56
 
 type Segment = {
   booking: Booking
@@ -153,11 +153,6 @@ export default function CalendarPage() {
   const selectedDayJobs = selectedDay ? getJobsForDay(selectedDay) : []
   const selectedDayBookingEvents = selectedDay ? getBookingEventsForDay(selectedDay) : []
 
-  const monthJobs = jobs.filter((j) => isSameMonth(new Date(j.scheduledDate), currentMonth))
-  const monthRevenue = monthJobs
-    .filter((j) => j.status !== "CANCELLED")
-    .reduce((a, j) => a + (j.property?.cleaningFee ?? 0), 0)
-
   return (
     <div className="min-h-screen">
       <Header
@@ -182,14 +177,14 @@ export default function CalendarPage() {
       {loading ? (
         <div className="flex items-center justify-center h-96"><Spinner size="lg" /></div>
       ) : (
-        <div className="p-6 max-w-7xl">
-          <div className="grid lg:grid-cols-3 gap-6">
+        <div className="p-6 max-w-[1800px]">
+          <div className="grid lg:grid-cols-[1fr_340px] gap-6">
             {/* Calendar grid */}
-            <div className="lg:col-span-2">
+            <div>
               <Card padding="none">
                 <div className="grid grid-cols-7 border-b border-slate-100">
                   {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-                    <div key={d} className="p-3 text-center text-xs font-semibold text-slate-400">{d}</div>
+                    <div key={d} className="p-4 text-center text-sm font-semibold text-slate-400">{d}</div>
                   ))}
                 </div>
 
@@ -213,16 +208,16 @@ export default function CalendarPage() {
                             return (
                               <motion.div key={day.toISOString()} whileTap={{ scale: 0.97 }}
                                 onClick={() => setSelectedDay(day)}
-                                className={`px-1.5 pt-1.5 border-r border-slate-50 cursor-pointer transition-colors flex items-start justify-between
+                                className={`px-2 pt-2 border-r border-slate-50 cursor-pointer transition-colors flex items-start justify-between
                                   ${isSelected ? "bg-blue-50" : "hover:bg-slate-50"}
                                   ${!inMonth ? "opacity-40" : ""}`}
                                 style={{ height: HEADER_ROW_HEIGHT }}>
-                                <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium transition-colors
+                                <span className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium transition-colors
                                   ${isCurrentDay ? "bg-blue-600 text-white" : isSelected ? "bg-blue-100 text-blue-700" : "text-slate-700"}`}>
                                   {format(day, "d")}
                                 </span>
                                 {checkoutJob && (
-                                  <span className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${STATUS_DOT[checkoutJob.status]}`} title={STATUS_LABEL[checkoutJob.status]} />
+                                  <span className={`w-2.5 h-2.5 rounded-full mt-2 flex-shrink-0 ${STATUS_DOT[checkoutJob.status]}`} title={STATUS_LABEL[checkoutJob.status]} />
                                 )}
                               </motion.div>
                             )
@@ -237,7 +232,7 @@ export default function CalendarPage() {
                               key={`${seg.booking.id}-${seg.lane}`}
                               type="button"
                               onClick={() => setSelectedDay(week[seg.startCol])}
-                              className={`absolute flex items-center px-2 h-5 text-[11px] font-medium text-white bg-indigo-700/90 hover:bg-indigo-800 truncate transition-colors
+                              className={`absolute flex items-center px-2.5 h-6 text-xs font-medium text-white bg-indigo-700/90 hover:bg-indigo-800 truncate transition-colors
                                 ${seg.continuesLeft ? "" : "rounded-l-full"}
                                 ${seg.continuesRight ? "" : "rounded-r-full"}`}
                               style={{
@@ -341,24 +336,6 @@ export default function CalendarPage() {
                     <p className="text-sm">No jobs scheduled</p>
                   </div>
                 )}
-              </Card>
-
-              {/* Month summary */}
-              <Card>
-                <p className="font-semibold text-slate-900 mb-4">This Month</p>
-                <div className="space-y-3">
-                  {[
-                    { label: "Total jobs", value: monthJobs.length },
-                    { label: "Completed", value: monthJobs.filter((j) => j.status === "COMPLETED").length },
-                    { label: "Needs cleaner", value: monthJobs.filter((j) => j.status === "UNASSIGNED").length },
-                    { label: "Revenue", value: formatCurrency(monthRevenue) },
-                  ].map((row) => (
-                    <div key={row.label} className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500">{row.label}</span>
-                      <span className="font-semibold text-slate-900">{row.value}</span>
-                    </div>
-                  ))}
-                </div>
               </Card>
             </div>
           </div>
