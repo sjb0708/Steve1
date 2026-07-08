@@ -40,7 +40,7 @@ interface AssignModalProps {
   onClose: () => void
   jobId: string
   currentCleanerId?: string | null
-  onAssigned: (cleaner: User) => void
+  onAssigned: () => void
 }
 
 function AssignCleanerModal({ open, onClose, jobId, currentCleanerId, onAssigned }: AssignModalProps) {
@@ -73,8 +73,7 @@ function AssignCleanerModal({ open, onClose, jobId, currentCleanerId, onAssigned
         setError(d.error ?? "Failed to assign cleaner.")
         return
       }
-      const cleaner = cleaners.find((c) => c.id === selectedId)
-      if (cleaner) onAssigned(cleaner)
+      onAssigned()
       onClose()
     } catch {
       setError("Something went wrong.")
@@ -198,6 +197,17 @@ function AdminJobDetail({ job: initialJob }: { job: Job }) {
       if (res.ok) setJob((j) => ({ ...j, status: "CANCELLED" }))
     } finally {
       setCancelling(false)
+    }
+  }
+
+  // Refetch rather than guess at the resulting status client-side — assigning
+  // a cleaner lands the job in PENDING_ACCEPTANCE, not ASSIGNED, until they
+  // actually accept, and that distinction matters enough to get from the server.
+  async function reloadJob() {
+    const res = await fetch(`/api/jobs/${job.id}`)
+    if (res.ok) {
+      const d = await res.json()
+      setJob(d.job ?? d)
     }
   }
 
@@ -504,15 +514,24 @@ function AdminJobDetail({ job: initialJob }: { job: Job }) {
                         )}
                       </div>
                     </div>
-                    {/* Audit trail */}
-                    <div className="bg-slate-50 rounded-xl px-3 py-2.5 space-y-1">
-                      <p className="text-xs text-slate-500">
-                        <span className="font-medium text-slate-700">Assigned by</span> {job.host?.name ?? "Admin"}
-                      </p>
-                      <p className="text-xs text-slate-400">
-                        Job created {new Date(job.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                      </p>
-                    </div>
+                    {/* A cleaner being set does NOT mean they've accepted — check
+                        status explicitly so this can't show "assigned" while the
+                        job is still just an unanswered offer sitting in their inbox */}
+                    {job.status === "PENDING_ACCEPTANCE" ? (
+                      <div className="flex items-center gap-2 text-sm text-purple-700 bg-purple-50 rounded-xl p-3">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                        Awaiting cleaner confirmation
+                      </div>
+                    ) : (
+                      <div className="bg-slate-50 rounded-xl px-3 py-2.5 space-y-1">
+                        <p className="text-xs text-slate-500">
+                          <span className="font-medium text-slate-700">Assigned by</span> {job.host?.name ?? "Admin"}
+                        </p>
+                        <p className="text-xs text-slate-400">
+                          Job created {new Date(job.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                        </p>
+                      </div>
+                    )}
                     {job.status !== "COMPLETED" && job.status !== "CANCELLED" && (
                       <Button
                         variant="outline"
@@ -523,16 +542,6 @@ function AdminJobDetail({ job: initialJob }: { job: Job }) {
                         <UserCheck className="w-4 h-4" /> Reassign
                       </Button>
                     )}
-                  </div>
-                ) : job.status === "PENDING_ACCEPTANCE" ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 text-sm text-purple-700 bg-purple-50 rounded-xl p-3">
-                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                      Awaiting cleaner confirmation
-                    </div>
-                    <Button variant="outline" size="sm" className="w-full" onClick={() => setShowAssign(true)}>
-                      <UserCheck className="w-4 h-4" /> Reassign
-                    </Button>
                   </div>
                 ) : (
                   <div className="space-y-3">
@@ -659,7 +668,7 @@ function AdminJobDetail({ job: initialJob }: { job: Job }) {
         onClose={() => setShowAssign(false)}
         jobId={job.id}
         currentCleanerId={job.cleanerId}
-        onAssigned={(cleaner) => setJob((j) => ({ ...j, cleaner, cleanerId: cleaner.id, status: "ASSIGNED" }))}
+        onAssigned={reloadJob}
       />
 
       {lightbox && (
@@ -1390,23 +1399,22 @@ export default function JobDetailPage({ params }: { params: Promise<{ id: string
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const res = await fetch(`/api/jobs/${id}`)
-        if (res.status === 404) { setNotFound(true); return }
-        if (res.ok) {
-          const d = await res.json()
-          setJob(d.job ?? d)
-        }
-      } catch {
-        // silently fail
-      } finally {
-        setLoading(false)
+  async function loadJob() {
+    try {
+      const res = await fetch(`/api/jobs/${id}`)
+      if (res.status === 404) { setNotFound(true); return }
+      if (res.ok) {
+        const d = await res.json()
+        setJob(d.job ?? d)
       }
+    } catch {
+      // silently fail
+    } finally {
+      setLoading(false)
     }
-    load()
-  }, [id])
+  }
+
+  useEffect(() => { loadJob() }, [id])
 
   return (
     <div className="min-h-screen">
