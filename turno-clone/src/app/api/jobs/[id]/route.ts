@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCurrentUser } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { assignCleanerToJob, completeJob } from "@/lib/jobs"
+import { assignCleanerToJob, completeJob, isSameDayTurnover } from "@/lib/jobs"
 import { format } from "date-fns"
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -26,7 +26,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const canAccess = user.role === "ADMIN" || job.cleanerId === user.userId
     if (!canAccess) return NextResponse.json({ error: "Forbidden" }, { status: 403 })
 
-    return NextResponse.json({ job })
+    // Computed server-side (not a raw field) so both admin and cleaner views
+    // show a correct, real turnover signal instead of guessing client-side
+    const isTurnover = await isSameDayTurnover(job.propertyId, new Date(job.scheduledDate), job.bookingId)
+
+    return NextResponse.json({ job: { ...job, isTurnover } })
   } catch (error) {
     console.error(error)
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })

@@ -107,6 +107,32 @@ export function jobAssignedEmail(
   `
 }
 
+// Confirmation sent BACK to the cleaner after they accept — closes the loop
+// so they know their tap actually went through, not just the admin.
+export function cleanerConfirmedEmail(cleanerName: string, propertyName: string, date: string, checkoutTime: string) {
+  return `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #059669; padding: 24px; border-radius: 12px 12px 0 0;">
+        <h1 style="color: white; margin: 0; font-size: 20px;">You're Confirmed ✓</h1>
+        <p style="color: #a7f3d0; margin: 4px 0 0;">Bailey Development Group</p>
+      </div>
+      <div style="background: white; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+        <p style="color: #334155;">Hi ${cleanerName},</p>
+        <p style="color: #334155;">Thanks for confirming — you're on the schedule.</p>
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <p style="margin: 0 0 8px; color: #64748b; font-size: 14px;">PROPERTY</p>
+          <p style="margin: 0; font-weight: bold; color: #0f172a;">${propertyName}</p>
+          <p style="margin: 8px 0 0; color: #64748b; font-size: 14px;">DATE</p>
+          <p style="margin: 0; font-weight: bold; color: #0f172a;">${date}</p>
+          <p style="margin: 8px 0 0; color: #64748b; font-size: 14px;">CHECKOUT</p>
+          <p style="margin: 0; font-weight: bold; color: #0f172a;">${checkoutTime}</p>
+        </div>
+        <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Bailey Development Group Cleaning Management</p>
+      </div>
+    </div>
+  `
+}
+
 export function jobAcceptedEmail(adminName: string, cleanerName: string, propertyName: string, date: string, jobUrl: string) {
   return `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">

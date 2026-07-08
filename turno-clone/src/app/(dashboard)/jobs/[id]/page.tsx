@@ -14,7 +14,7 @@ import {
   Building2, MapPin, Calendar, Clock, CheckCircle2, Circle,
   ArrowLeft, AlertCircle, UserCheck, FileText, ThumbsUp, ThumbsDown,
   TriangleAlert, Camera, X, ImagePlus, DollarSign, ShoppingCart, Package, Truck,
-  KeyRound, Wifi, StickyNote,
+  KeyRound, Wifi, StickyNote, Zap,
 } from "lucide-react"
 import Link from "next/link"
 import { motion } from "framer-motion"
@@ -558,31 +558,32 @@ function AdminJobDetail({ job: initialJob }: { job: Job }) {
               </Card>
             </motion.div>
 
-            {/* Timeline */}
+            {/* Schedule — deliberately just the one fact that matters: when the
+                cleaning happens. Next-check-in is never shown here; that used
+                to display the CURRENT booking's own check-in date mislabeled
+                as "next," which was both wrong and more than a cleaner needs
+                to know. A same-day-turnover flag (no guest dates) covers the
+                "clean fast" signal without exposing booking details that can
+                still change. */}
             {job.booking && (
               <motion.div initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
                 <Card>
-                  <CardTitle className="mb-4">Timeline</CardTitle>
-                  <div className="space-y-4">
-                    {[
-                      { label: "Guest check-out", time: job.booking.checkOut, color: "bg-rose-400" },
-                      { label: "Cleaning starts", time: job.scheduledDate, color: "bg-blue-500" },
-                      { label: "Next check-in", time: job.booking.checkIn, color: "bg-emerald-400" },
-                    ].map((event, i) => (
-                      <div key={event.label} className="flex items-start gap-3">
-                        <div className="flex flex-col items-center">
-                          <div className={`w-3 h-3 rounded-full flex-shrink-0 mt-0.5 ${event.color}`} />
-                          {i < 2 && <div className="w-0.5 h-8 bg-slate-200 mt-1" />}
-                        </div>
-                        <div>
-                          <p className="text-xs text-slate-500">{event.label}</p>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {formatDateTime(event.time)}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+                  <CardTitle className="mb-4">Schedule</CardTitle>
+                  <div className="flex items-start gap-3">
+                    <div className="w-3 h-3 rounded-full flex-shrink-0 mt-1 bg-rose-400" />
+                    <div>
+                      <p className="text-xs text-slate-500">Guest checkout / cleaning scheduled</p>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {formatDateTime(job.scheduledDate)}
+                      </p>
+                    </div>
                   </div>
+                  {job.isTurnover && (
+                    <div className="flex items-center gap-2 text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-xl p-3 mt-4">
+                      <Zap className="w-4 h-4 flex-shrink-0 fill-current" />
+                      <span><b>Same-day turnover</b> — a new guest checks in today, quick turnaround needed.</span>
+                    </div>
+                  )}
                 </Card>
               </motion.div>
             )}
@@ -1129,7 +1130,11 @@ function CleanerJobDetail({ job: initialJob }: { job: Job }) {
         </motion.div>
       )}
 
-      {/* Schedule info */}
+      {/* Schedule info — just the one date that matters. No "next check-in":
+          that used to show the CURRENT booking's own check-in mislabeled as
+          "next," which was wrong and more than a cleaner needs to know. The
+          turnover flag covers "clean fast today" without exposing a specific
+          incoming guest's date. */}
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Schedule</p>
@@ -1139,39 +1144,30 @@ function CleanerJobDetail({ job: initialJob }: { job: Job }) {
                 <Calendar className="w-4 h-4 text-blue-600" />
               </div>
               <div>
-                <p className="text-xs text-slate-400">Cleaning date</p>
+                <p className="text-xs text-slate-400">Checkout date</p>
                 <p className="text-sm font-semibold text-slate-900">
-                  {formatDateShort(job.scheduledDate)}, {formatTime(job.scheduledDate)}
+                  {formatDateShort(job.scheduledDate)}
                 </p>
               </div>
             </div>
-            {job.booking && (
-              <>
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-rose-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Clock className="w-4 h-4 text-rose-500" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-400">Guest check-out</p>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {formatDate(job.booking.checkOut)} at {formatTime(job.booking.checkOut)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 bg-emerald-50 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Calendar className="w-4 h-4 text-emerald-600" />
-                  </div>
-                  <div>
-                    <p className="text-xs text-slate-400">Next check-in</p>
-                    <p className="text-sm font-semibold text-slate-900">
-                      {formatDate(job.booking.checkIn)} at {formatTime(job.booking.checkIn)}
-                    </p>
-                  </div>
-                </div>
-              </>
-            )}
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-rose-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Clock className="w-4 h-4 text-rose-500" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-400">Checkout time</p>
+                <p className="text-sm font-semibold text-slate-900">
+                  {job.property?.checkoutTime || "11:00 AM"}
+                </p>
+              </div>
+            </div>
           </div>
+          {job.isTurnover && (
+            <div className="flex items-center gap-2 text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded-xl p-3 mt-3">
+              <Zap className="w-4 h-4 flex-shrink-0 fill-current" />
+              <span><b>Same-day turnover</b> — please plan for a quick clean.</span>
+            </div>
+          )}
         </div>
       </motion.div>
 

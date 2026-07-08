@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
-import { sendEmail, jobAcceptedEmail, jobDeclinedEmail } from "@/lib/email"
+import { sendEmail, jobAcceptedEmail, jobDeclinedEmail, cleanerConfirmedEmail } from "@/lib/email"
 import { format } from "date-fns"
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
@@ -57,6 +57,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
           to: job.host.email,
           subject: `${job.cleaner?.name} accepted the job at ${job.property?.name}`,
           html: jobAcceptedEmail(job.host.name, job.cleaner?.name ?? "Cleaner", job.property?.name ?? "", dateStr, jobUrl),
+        })
+      }
+
+      // Close the loop with the cleaner too — not just the admin
+      await prisma.notification.create({
+        data: {
+          userId: job.cleanerId!,
+          jobId: job.id,
+          type: "JOB_ACCEPTED",
+          title: "You're Confirmed ✓",
+          message: `Thanks for confirming — you're on the schedule for ${job.property?.name} on ${dateStr}.`,
+        },
+      })
+      if (job.cleaner?.email) {
+        await sendEmail({
+          to: job.cleaner.email,
+          subject: `You're confirmed for ${job.property?.name} — ${dateStr}`,
+          html: cleanerConfirmedEmail(job.cleaner.name, job.property?.name ?? "", dateStr, job.property?.checkoutTime ?? "11:00 AM"),
         })
       }
 

@@ -79,6 +79,7 @@ export interface Job {
   cleaner?: User | null
   booking?: Booking | null
   checklistItems?: ChecklistItem[]
+  isTurnover?: boolean
 }
 
 export interface ChecklistTemplate {
