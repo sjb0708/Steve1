@@ -38,8 +38,35 @@ const STATUS_PILL: Record<string, string> = {
   CANCELLED: "bg-slate-100 text-slate-500",
 }
 
+// Short enough to fit as a badge directly on the checkout-day cell
+const STATUS_SHORT_LABEL: Record<string, string> = {
+  UNASSIGNED: "Needs cleaner",
+  PENDING_ACCEPTANCE: "Awaiting confirm",
+  ASSIGNED: "Assigned",
+  IN_PROGRESS: "Cleaning now",
+  COMPLETED: "Cleaned",
+}
+
 const BAR_ROW_HEIGHT = 34
-const HEADER_ROW_HEIGHT = 56
+const HEADER_ROW_HEIGHT = 64
+
+// One color per property so multiple listings are distinguishable on the
+// calendar at a glance, not just by reading the name in a small bar.
+const PROPERTY_COLORS = [
+  { bar: "bg-indigo-700/90 hover:bg-indigo-800", dot: "bg-indigo-600" },
+  { bar: "bg-teal-700/90 hover:bg-teal-800", dot: "bg-teal-600" },
+  { bar: "bg-rose-700/90 hover:bg-rose-800", dot: "bg-rose-600" },
+  { bar: "bg-amber-700/90 hover:bg-amber-800", dot: "bg-amber-600" },
+  { bar: "bg-violet-700/90 hover:bg-violet-800", dot: "bg-violet-600" },
+  { bar: "bg-cyan-700/90 hover:bg-cyan-800", dot: "bg-cyan-600" },
+]
+
+function colorForProperty(propertyId: string | undefined) {
+  if (!propertyId) return PROPERTY_COLORS[0]
+  let hash = 0
+  for (let i = 0; i < propertyId.length; i++) hash = (hash * 31 + propertyId.charCodeAt(i)) >>> 0
+  return PROPERTY_COLORS[hash % PROPERTY_COLORS.length]
+}
 
 type Segment = {
   booking: Booking
@@ -153,6 +180,12 @@ export default function CalendarPage() {
   const selectedDayJobs = selectedDay ? getJobsForDay(selectedDay) : []
   const selectedDayBookingEvents = selectedDay ? getBookingEventsForDay(selectedDay) : []
 
+  const propertyById = new Map<string, NonNullable<Booking["property"]>>()
+  for (const b of bookings) {
+    if (b.property?.id && !propertyById.has(b.property.id)) propertyById.set(b.property.id, b.property)
+  }
+  const distinctProperties = Array.from(propertyById.values())
+
   return (
     <div className="min-h-screen">
       <Header
@@ -208,7 +241,7 @@ export default function CalendarPage() {
                             return (
                               <motion.div key={day.toISOString()} whileTap={{ scale: 0.97 }}
                                 onClick={() => setSelectedDay(day)}
-                                className={`px-2 pt-2 border-r border-slate-50 cursor-pointer transition-colors flex items-start justify-between
+                                className={`px-2 pt-2 pb-1.5 border-r border-slate-50 cursor-pointer transition-colors flex flex-col gap-1
                                   ${isSelected ? "bg-blue-50" : "hover:bg-slate-50"}
                                   ${!inMonth ? "opacity-40" : ""}`}
                                 style={{ height: HEADER_ROW_HEIGHT }}>
@@ -217,7 +250,9 @@ export default function CalendarPage() {
                                   {format(day, "d")}
                                 </span>
                                 {checkoutJob && (
-                                  <span className={`w-2.5 h-2.5 rounded-full mt-2 flex-shrink-0 ${STATUS_DOT[checkoutJob.status]}`} title={STATUS_LABEL[checkoutJob.status]} />
+                                  <span className={`self-start px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none truncate max-w-full ${STATUS_PILL[checkoutJob.status] ?? "bg-slate-100 text-slate-500"}`}>
+                                    {STATUS_SHORT_LABEL[checkoutJob.status] ?? checkoutJob.status}
+                                  </span>
                                 )}
                               </motion.div>
                             )
@@ -232,7 +267,8 @@ export default function CalendarPage() {
                               key={`${seg.booking.id}-${seg.lane}`}
                               type="button"
                               onClick={() => setSelectedDay(week[seg.startCol])}
-                              className={`absolute flex items-center px-2.5 h-6 text-xs font-medium text-white bg-indigo-700/90 hover:bg-indigo-800 truncate transition-colors
+                              className={`absolute flex items-center px-2.5 h-6 text-xs font-medium text-white truncate transition-colors
+                                ${colorForProperty(seg.booking.property?.id).bar}
                                 ${seg.continuesLeft ? "" : "rounded-l-full"}
                                 ${seg.continuesRight ? "" : "rounded-r-full"}`}
                               style={{
@@ -241,7 +277,7 @@ export default function CalendarPage() {
                                 width: `calc(${((seg.endFrac - seg.startFrac) / 7) * 100}% - ${(seg.continuesLeft ? 0 : 2) + (seg.continuesRight ? 0 : 2)}px)`,
                               }}
                             >
-                              {seg.booking.guestName ?? "Reserved"} · {seg.booking.property?.name?.split(" ")[0] ?? ""}
+                              {seg.booking.property?.name ?? ""} · {seg.booking.guestName ?? "Reserved"}
                             </button>
                           ))}
                         </div>
@@ -253,22 +289,33 @@ export default function CalendarPage() {
 
               {/* Legend */}
               <div className="mt-4 space-y-2">
-                <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <span className="w-3.5 h-2 rounded-full bg-indigo-700/90" />
-                  Guest stay (bar spans check-in to checkout)
-                </div>
+                {distinctProperties.length > 1 ? (
+                  <div className="flex flex-wrap items-center gap-4">
+                    <span className="text-xs text-slate-400">Properties:</span>
+                    {distinctProperties.map((p) => (
+                      <div key={p.id} className="flex items-center gap-1.5 text-sm text-slate-600">
+                        <span className={`w-3.5 h-2 rounded-full ${colorForProperty(p.id).dot}`} />
+                        {p.name}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <span className={`w-3.5 h-2 rounded-full ${colorForProperty(distinctProperties[0]?.id).dot}`} />
+                    Guest stay (bar spans check-in to checkout)
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-4">
-                  <span className="text-xs text-slate-400">Cleaning status, shown as a dot on checkout day:</span>
+                  <span className="text-xs text-slate-400">Cleaning status, shown on the checkout day:</span>
                   {[
-                    { color: "bg-amber-400", label: "Needs Cleaner" },
-                    { color: "bg-purple-400", label: "Awaiting Confirmation" },
-                    { color: "bg-blue-500", label: "Assigned" },
-                    { color: "bg-orange-500", label: "In Progress" },
-                    { color: "bg-emerald-500", label: "Completed" },
+                    { color: "bg-amber-100 text-amber-700", label: "Needs Cleaner" },
+                    { color: "bg-purple-100 text-purple-700", label: "Awaiting Confirmation" },
+                    { color: "bg-blue-100 text-blue-700", label: "Assigned" },
+                    { color: "bg-orange-100 text-orange-700", label: "In Progress" },
+                    { color: "bg-emerald-100 text-emerald-700", label: "Completed" },
                   ].map((l) => (
                     <div key={l.label} className="flex items-center gap-1.5 text-sm text-slate-600">
-                      <span className={`w-2.5 h-2.5 rounded-full ${l.color}`} />
-                      {l.label}
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${l.color}`}>{l.label}</span>
                     </div>
                   ))}
                 </div>
