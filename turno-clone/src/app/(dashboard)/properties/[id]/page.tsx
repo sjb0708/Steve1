@@ -301,6 +301,19 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
             )}
           </div>
 
+          {!editingSettings && (
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <p className="text-xs font-semibold text-slate-500 mb-1.5">Access Codes &amp; House Info</p>
+              {property.accessInstructions ? (
+                <p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{property.accessInstructions}</p>
+              ) : (
+                <p className="text-sm text-slate-400">
+                  No codes added yet — click <button onClick={() => setEditingSettings(true)} className="text-blue-600 hover:underline font-medium">Edit Settings</button> to add door codes, the supply closet code, WiFi, etc.
+                </p>
+              )}
+            </div>
+          )}
+
           {editingSettings && (
             <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
               className="mt-5 pt-5 border-t border-slate-100 space-y-4">
@@ -334,12 +347,15 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                 value={editForm.checkoutTime}
                 onChange={(e) => setEditForm((f) => ({ ...f, checkoutTime: e.target.value }))} />
               <Textarea
-                label="Entry / Access Instructions"
-                placeholder="e.g. Key lockbox code is 1234, located on front gate. Ring doorbell on arrival."
-                rows={3}
+                label="Access Codes &amp; House Info"
+                placeholder={"e.g.\nFront door code: 1234\nSupply closet code: 5678\nWiFi: NetworkName / password: xxxxx\nAlarm code: 0000 (arm on exit within 60 sec)"}
+                rows={5}
                 value={editForm.accessInstructions}
                 onChange={(e) => setEditForm((f) => ({ ...f, accessInstructions: e.target.value }))}
               />
+              <p className="text-xs text-slate-400 -mt-2">
+                Put every code and credential your cleaner needs here, one per line — door codes, the supply closet, WiFi, alarm, anything. It shows up clearly on their job page.
+              </p>
               <Button onClick={saveSettings} loading={saving} size="sm">
                 <Save className="w-4 h-4" /> Save Settings
               </Button>

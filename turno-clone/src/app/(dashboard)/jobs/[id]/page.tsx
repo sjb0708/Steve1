@@ -1197,7 +1197,7 @@ function CleanerJobDetail({ job: initialJob }: { job: Job }) {
                 <FileText className="w-4 h-4 text-amber-600" />
               </div>
               <div>
-                <p className="text-xs text-slate-400 mb-1">Entry / Access Instructions</p>
+                <p className="text-xs text-slate-400 mb-1">Access Codes &amp; House Info</p>
                 <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-line">
                   {job.property.accessInstructions}
                 </p>
