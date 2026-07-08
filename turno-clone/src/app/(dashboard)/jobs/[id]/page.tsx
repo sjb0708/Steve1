@@ -310,13 +310,13 @@ function AdminJobDetail({ job: initialJob }: { job: Job }) {
                     <div>
                       <p className="text-xs text-slate-400 mb-1">Platform</p>
                       <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${
-                        job.booking.platform === "AIRBNB"
+                        job.booking.platform?.toLowerCase() === "airbnb"
                           ? "bg-rose-100 text-rose-700"
-                          : job.booking.platform === "VRBO"
+                          : job.booking.platform?.toLowerCase() === "vrbo"
                           ? "bg-blue-100 text-blue-700"
                           : "bg-slate-100 text-slate-600"
                       }`}>
-                        {job.booking.platform}
+                        {job.booking.platform?.toLowerCase() === "airbnb" ? "Airbnb" : job.booking.platform?.toLowerCase() === "vrbo" ? "VRBO" : job.booking.platform}
                       </span>
                     </div>
                   </div>

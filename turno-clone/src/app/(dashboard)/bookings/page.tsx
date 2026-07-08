@@ -144,24 +144,26 @@ interface BookingRowProps {
 function BookingRow({ booking, nextBooking, onCreateJob }: BookingRowProps) {
   const hasJob = (booking.jobs?.length ?? 0) > 0
   const assignedJob = booking.jobs?.[0]
+  const isPast = new Date(booking.checkOut) < new Date()
   const sameDayTurnover =
     nextBooking !== null &&
     isSameDay(new Date(booking.checkOut), new Date(nextBooking.checkIn))
+  const platform = booking.platform?.toLowerCase()
 
   return (
-    <div className="p-4 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors">
+    <div className={`p-4 border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors ${isPast && !hasJob ? "opacity-60" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0 space-y-2">
           {/* Dates row */}
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <span className={`px-2.5 py-1 text-xs font-semibold rounded-full ${
-              booking.platform === "AIRBNB"
+              platform === "airbnb"
                 ? "bg-rose-100 text-rose-700"
-                : booking.platform === "VRBO"
+                : platform === "vrbo"
                 ? "bg-blue-100 text-blue-700"
                 : "bg-slate-100 text-slate-700"
             }`}>
-              {booking.platform}
+              {platform === "airbnb" ? "Airbnb" : platform === "vrbo" ? "VRBO" : booking.platform}
             </span>
             {booking.guestName && (
               <span className="text-slate-700 font-medium truncate">{booking.guestName}</span>
@@ -184,7 +186,9 @@ function BookingRow({ booking, nextBooking, onCreateJob }: BookingRowProps) {
             </div>
           </div>
 
-          {/* Cleaning status */}
+          {/* Cleaning status — a booking whose checkout already passed with no
+              job was never going to get one (we don't create jobs for the
+              past); showing it as an urgent amber warning was misleading */}
           <div>
             {hasJob && assignedJob ? (
               <div className="flex items-center gap-2">
@@ -193,6 +197,10 @@ function BookingRow({ booking, nextBooking, onCreateJob }: BookingRowProps) {
                   Cleaning assigned
                   {assignedJob.cleaner ? ` · ${assignedJob.cleaner.name}` : ""}
                 </span>
+              </div>
+            ) : isPast ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-slate-400 font-medium">Past booking — no cleaning was scheduled</span>
               </div>
             ) : (
               <div className="flex items-center gap-2">
@@ -205,7 +213,11 @@ function BookingRow({ booking, nextBooking, onCreateJob }: BookingRowProps) {
 
         {/* Action */}
         <div className="flex-shrink-0">
-          {!hasJob ? (
+          {hasJob ? (
+            <span className="px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-xl border border-emerald-100">
+              Scheduled
+            </span>
+          ) : isPast ? null : (
             <Button
               size="sm"
               onClick={() => onCreateJob(booking)}
@@ -213,10 +225,6 @@ function BookingRow({ booking, nextBooking, onCreateJob }: BookingRowProps) {
             >
               <Plus className="w-3.5 h-3.5" /> Create Job
             </Button>
-          ) : (
-            <span className="px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-xl border border-emerald-100">
-              Scheduled
-            </span>
           )}
         </div>
       </div>
