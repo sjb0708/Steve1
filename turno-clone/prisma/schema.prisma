@@ -50,6 +50,10 @@ model Property {
   cleaningDuration     Int
   cleaningFee          Float     @default(0)
   checkoutTime         String    @default("11:00 AM")
+  doorCode             String?
+  supplyClosetCode     String?
+  wifiNetwork          String?
+  wifiPassword         String?
   accessInstructions   String?
   lastSyncedAt         DateTime?
   createdAt        DateTime  @default(now())

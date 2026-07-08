@@ -14,6 +14,7 @@ import {
   Building2, MapPin, Calendar, Clock, CheckCircle2, Circle,
   ArrowLeft, AlertCircle, UserCheck, FileText, ThumbsUp, ThumbsDown,
   TriangleAlert, Camera, X, ImagePlus, DollarSign, ShoppingCart, Package, Truck,
+  KeyRound, Wifi, StickyNote,
 } from "lucide-react"
 import Link from "next/link"
 import { motion } from "framer-motion"
@@ -1190,22 +1191,44 @@ function CleanerJobDetail({ job: initialJob }: { job: Job }) {
             </div>
           ) : null}
 
-          {/* Access instructions */}
-          {job.property?.accessInstructions && (
+          {/* Access codes */}
+          {(job.property?.doorCode || job.property?.supplyClosetCode || job.property?.wifiNetwork || job.property?.accessInstructions) && (
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
-                <FileText className="w-4 h-4 text-amber-600" />
+                <KeyRound className="w-4 h-4 text-amber-600" />
               </div>
-              <div>
-                <p className="text-xs text-slate-400 mb-1">Access Codes &amp; House Info</p>
-                <p className="text-sm text-slate-800 leading-relaxed whitespace-pre-line">
-                  {job.property.accessInstructions}
-                </p>
+              <div className="space-y-1.5 flex-1 min-w-0">
+                <p className="text-xs text-slate-400">Access Codes</p>
+                {job.property.doorCode && (
+                  <p className="text-sm text-slate-800 flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                    Front Door: <span className="font-mono font-semibold">{job.property.doorCode}</span>
+                  </p>
+                )}
+                {job.property.supplyClosetCode && (
+                  <p className="text-sm text-slate-800 flex items-center gap-1.5">
+                    <Package className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                    Supply Closet: <span className="font-mono font-semibold">{job.property.supplyClosetCode}</span>
+                  </p>
+                )}
+                {job.property.wifiNetwork && (
+                  <p className="text-sm text-slate-800 flex items-center gap-1.5">
+                    <Wifi className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                    WiFi: <span className="font-mono font-semibold">{job.property.wifiNetwork}</span>
+                    {job.property.wifiPassword && <span className="text-slate-500">/ {job.property.wifiPassword}</span>}
+                  </p>
+                )}
+                {job.property.accessInstructions && (
+                  <p className="text-sm text-slate-700 flex items-start gap-1.5 whitespace-pre-line">
+                    <StickyNote className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
+                    {job.property.accessInstructions}
+                  </p>
+                )}
               </div>
             </div>
           )}
 
-          {!job.property?.cleaningFee && !job.property?.accessInstructions && (
+          {!job.property?.cleaningFee && !job.property?.doorCode && !job.property?.supplyClosetCode && !job.property?.wifiNetwork && !job.property?.accessInstructions && (
             <p className="text-sm text-slate-400 text-center py-1">No additional details from host.</p>
           )}
         </div>

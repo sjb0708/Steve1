@@ -35,6 +35,10 @@ export interface Property {
   cleaningDuration: number
   cleaningFee?: number
   checkoutTime?: string
+  doorCode?: string | null
+  supplyClosetCode?: string | null
+  wifiNetwork?: string | null
+  wifiPassword?: string | null
   accessInstructions?: string | null
   lastSyncedAt?: string | null
   createdAt: string

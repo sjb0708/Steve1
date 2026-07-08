@@ -47,6 +47,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.cleaningFee !== undefined) updateData.cleaningFee = parseFloat(body.cleaningFee) || 0
     if (body.checkoutTime !== undefined) updateData.checkoutTime = body.checkoutTime || "11:00 AM"
     if (body.imageUrl !== undefined) updateData.imageUrl = body.imageUrl || null
+    if (body.doorCode !== undefined) updateData.doorCode = body.doorCode || null
+    if (body.supplyClosetCode !== undefined) updateData.supplyClosetCode = body.supplyClosetCode || null
+    if (body.wifiNetwork !== undefined) updateData.wifiNetwork = body.wifiNetwork || null
+    if (body.wifiPassword !== undefined) updateData.wifiPassword = body.wifiPassword || null
     if (body.accessInstructions !== undefined) updateData.accessInstructions = body.accessInstructions || null
 
     const property = await prisma.property.update({

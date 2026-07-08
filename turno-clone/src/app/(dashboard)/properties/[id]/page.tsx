@@ -9,7 +9,8 @@ import { Spinner } from "@/components/ui/Spinner"
 import { motion } from "framer-motion"
 import {
   Building2, MapPin, Bed, Bath, Clock, Link2, Plus, Trash2,
-  GripVertical, Save, ArrowLeft, Wifi, WifiOff, ChevronDown, ChevronUp, DollarSign, Camera, Loader2
+  GripVertical, Save, ArrowLeft, Wifi, WifiOff, ChevronDown, ChevronUp, DollarSign, Camera, Loader2,
+  KeyRound, Package, StickyNote
 } from "lucide-react"
 import Link from "next/link"
 import type { Property, ChecklistTemplateItem } from "@/types"
@@ -44,7 +45,10 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [photoError, setPhotoError] = useState("")
 
   // Edit property fields
-  const [editForm, setEditForm] = useState({ bedrooms: "", bathrooms: "", airbnbIcalUrl: "", vrboIcalUrl: "", cleaningDuration: "", cleaningFee: "", checkoutTime: "", accessInstructions: "" })
+  const [editForm, setEditForm] = useState({
+    bedrooms: "", bathrooms: "", airbnbIcalUrl: "", vrboIcalUrl: "", cleaningDuration: "", cleaningFee: "", checkoutTime: "",
+    doorCode: "", supplyClosetCode: "", wifiNetwork: "", wifiPassword: "", accessInstructions: "",
+  })
   const [editingSettings, setEditingSettings] = useState(false)
 
   useEffect(() => {
@@ -62,6 +66,10 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           cleaningDuration: String(prop.cleaningDuration),
           cleaningFee: String(prop.cleaningFee ?? 0),
           checkoutTime: prop.checkoutTime || "11:00 AM",
+          doorCode: prop.doorCode || "",
+          supplyClosetCode: prop.supplyClosetCode || "",
+          wifiNetwork: prop.wifiNetwork || "",
+          wifiPassword: prop.wifiPassword || "",
           accessInstructions: prop.accessInstructions || "",
         })
         const template = prop.checklistTemplate
@@ -303,9 +311,38 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
 
           {!editingSettings && (
             <div className="mt-4 pt-4 border-t border-slate-100">
-              <p className="text-xs font-semibold text-slate-500 mb-1.5">Access Codes &amp; House Info</p>
-              {property.accessInstructions ? (
-                <p className="text-sm text-slate-700 whitespace-pre-line leading-relaxed">{property.accessInstructions}</p>
+              <p className="text-xs font-semibold text-slate-500 mb-2">Access Codes</p>
+              {property.doorCode || property.supplyClosetCode || property.wifiNetwork || property.accessInstructions ? (
+                <div className="space-y-2">
+                  {property.doorCode && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <KeyRound className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                      <span className="text-slate-500">Front Door:</span>
+                      <span className="font-mono font-semibold text-slate-900">{property.doorCode}</span>
+                    </div>
+                  )}
+                  {property.supplyClosetCode && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Package className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                      <span className="text-slate-500">Supply Closet:</span>
+                      <span className="font-mono font-semibold text-slate-900">{property.supplyClosetCode}</span>
+                    </div>
+                  )}
+                  {property.wifiNetwork && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Wifi className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                      <span className="text-slate-500">WiFi:</span>
+                      <span className="font-mono font-semibold text-slate-900">{property.wifiNetwork}</span>
+                      {property.wifiPassword && <span className="text-slate-400">/ {property.wifiPassword}</span>}
+                    </div>
+                  )}
+                  {property.accessInstructions && (
+                    <div className="flex items-start gap-2 text-sm pt-1">
+                      <StickyNote className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" />
+                      <span className="text-slate-700 whitespace-pre-line">{property.accessInstructions}</span>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <p className="text-sm text-slate-400">
                   No codes added yet — click <button onClick={() => setEditingSettings(true)} className="text-blue-600 hover:underline font-medium">Edit Settings</button> to add door codes, the supply closet code, WiFi, etc.
@@ -346,16 +383,34 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                 placeholder="11:00 AM"
                 value={editForm.checkoutTime}
                 onChange={(e) => setEditForm((f) => ({ ...f, checkoutTime: e.target.value }))} />
+              <div className="pt-2 border-t border-slate-100">
+                <p className="text-sm font-semibold text-slate-700 mb-3">Access Codes</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <Input label="Front Door Code" icon={KeyRound}
+                    placeholder="1234"
+                    value={editForm.doorCode}
+                    onChange={(e) => setEditForm((f) => ({ ...f, doorCode: e.target.value }))} />
+                  <Input label="Supply Closet Code" icon={Package}
+                    placeholder="5678"
+                    value={editForm.supplyClosetCode}
+                    onChange={(e) => setEditForm((f) => ({ ...f, supplyClosetCode: e.target.value }))} />
+                  <Input label="WiFi Network" icon={Wifi}
+                    placeholder="BigHouseGuest"
+                    value={editForm.wifiNetwork}
+                    onChange={(e) => setEditForm((f) => ({ ...f, wifiNetwork: e.target.value }))} />
+                  <Input label="WiFi Password" icon={Wifi}
+                    placeholder="password123"
+                    value={editForm.wifiPassword}
+                    onChange={(e) => setEditForm((f) => ({ ...f, wifiPassword: e.target.value }))} />
+                </div>
+              </div>
               <Textarea
-                label="Access Codes &amp; House Info"
-                placeholder={"e.g.\nFront door code: 1234\nSupply closet code: 5678\nWiFi: NetworkName / password: xxxxx\nAlarm code: 0000 (arm on exit within 60 sec)"}
-                rows={5}
+                label="Other Notes"
+                placeholder="Anything else your cleaner needs — alarm code, gate code, pool code, special instructions..."
+                rows={3}
                 value={editForm.accessInstructions}
                 onChange={(e) => setEditForm((f) => ({ ...f, accessInstructions: e.target.value }))}
               />
-              <p className="text-xs text-slate-400 -mt-2">
-                Put every code and credential your cleaner needs here, one per line — door codes, the supply closet, WiFi, alarm, anything. It shows up clearly on their job page.
-              </p>
               <Button onClick={saveSettings} loading={saving} size="sm">
                 <Save className="w-4 h-4" /> Save Settings
               </Button>
