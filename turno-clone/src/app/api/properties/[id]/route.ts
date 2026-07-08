@@ -45,6 +45,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.vrboIcalUrl !== undefined) updateData.vrboIcalUrl = body.vrboIcalUrl || null
     if (body.cleaningDuration !== undefined) updateData.cleaningDuration = parseInt(body.cleaningDuration)
     if (body.cleaningFee !== undefined) updateData.cleaningFee = parseFloat(body.cleaningFee) || 0
+    if (body.checkoutTime !== undefined) updateData.checkoutTime = body.checkoutTime || "11:00 AM"
     if (body.imageUrl !== undefined) updateData.imageUrl = body.imageUrl || null
     if (body.accessInstructions !== undefined) updateData.accessInstructions = body.accessInstructions || null
 

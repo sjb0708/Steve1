@@ -44,7 +44,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [photoError, setPhotoError] = useState("")
 
   // Edit property fields
-  const [editForm, setEditForm] = useState({ bedrooms: "", bathrooms: "", airbnbIcalUrl: "", vrboIcalUrl: "", cleaningDuration: "", cleaningFee: "", accessInstructions: "" })
+  const [editForm, setEditForm] = useState({ bedrooms: "", bathrooms: "", airbnbIcalUrl: "", vrboIcalUrl: "", cleaningDuration: "", cleaningFee: "", checkoutTime: "", accessInstructions: "" })
   const [editingSettings, setEditingSettings] = useState(false)
 
   useEffect(() => {
@@ -61,6 +61,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           vrboIcalUrl: prop.vrboIcalUrl || "",
           cleaningDuration: String(prop.cleaningDuration),
           cleaningFee: String(prop.cleaningFee ?? 0),
+          checkoutTime: prop.checkoutTime || "11:00 AM",
           accessInstructions: prop.accessInstructions || "",
         })
         const template = prop.checklistTemplate
@@ -260,7 +261,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
             </button>
           </div>
 
-          <div className="grid grid-cols-3 gap-4 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
             <div className="flex items-center gap-2 text-slate-600">
               <Bed className="w-4 h-4 text-slate-400" />
               {property.bedrooms} bedrooms
@@ -272,6 +273,10 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
             <div className="flex items-center gap-2 text-slate-600">
               <Clock className="w-4 h-4 text-slate-400" />
               {property.cleaningDuration} min clean
+            </div>
+            <div className="flex items-center gap-2 text-slate-600">
+              <Clock className="w-4 h-4 text-slate-400" />
+              Checkout {property.checkoutTime}
             </div>
           </div>
 
@@ -324,6 +329,10 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                 min="0"
                 step="0.01"
                 onChange={(e) => setEditForm((f) => ({ ...f, cleaningFee: e.target.value }))} />
+              <Input label="Checkout Time" icon={Clock}
+                placeholder="11:00 AM"
+                value={editForm.checkoutTime}
+                onChange={(e) => setEditForm((f) => ({ ...f, checkoutTime: e.target.value }))} />
               <Textarea
                 label="Entry / Access Instructions"
                 placeholder="e.g. Key lockbox code is 1234, located on front gate. Ring doorbell on arrival."

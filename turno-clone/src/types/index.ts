@@ -34,6 +34,7 @@ export interface Property {
   vrboIcalUrl?: string | null
   cleaningDuration: number
   cleaningFee?: number
+  checkoutTime?: string
   accessInstructions?: string | null
   lastSyncedAt?: string | null
   createdAt: string

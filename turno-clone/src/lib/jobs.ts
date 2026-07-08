@@ -97,7 +97,7 @@ export async function isSameDayTurnover(propertyId: string, date: Date, excludeB
 export async function assignCleanerToJob(jobId: string, cleanerId: string) {
   const job = await prisma.job.findUnique({
     where: { id: jobId },
-    include: { property: { select: { name: true } } },
+    include: { property: { select: { name: true, checkoutTime: true } } },
   })
   if (!job) return
 
@@ -110,7 +110,11 @@ export async function assignCleanerToJob(jobId: string, cleanerId: string) {
     data: { cleanerId, status: "PENDING_ACCEPTANCE", actionToken, actionTokenExpiry },
   })
 
-  const dateStr = format(new Date(job.scheduledDate), "EEEE, MMMM d 'at' h:mm a")
+  // Date only, not date+time — Airbnb/VRBO calendar feeds only give a date for
+  // checkout, so any "time" derived from the booking is a meaningless artifact.
+  // The real checkout time is the property's own policy (checkoutTime).
+  const dateStr = format(new Date(job.scheduledDate), "EEEE, MMMM d")
+  const checkoutTime = job.property?.checkoutTime || "11:00 AM"
   const turnover = await isSameDayTurnover(job.propertyId, new Date(job.scheduledDate), job.bookingId)
 
   await prisma.notification.create({
@@ -119,7 +123,7 @@ export async function assignCleanerToJob(jobId: string, cleanerId: string) {
       jobId,
       type: "JOB_ASSIGNED",
       title: "New Job — Action Required",
-      message: `You've been assigned a cleaning job at ${job.property?.name} on ${dateStr}.${turnover ? " ⚡ Same-day turnover — a new guest checks in today, so it needs a quick turnaround." : ""} Please accept or decline.`,
+      message: `You've been assigned a cleaning job at ${job.property?.name} on ${dateStr}. Checkout: ${checkoutTime}.${turnover ? " ⚡ Same-day turnover — a new guest checks in today, so it needs a quick turnaround." : ""} Please accept or decline.`,
     },
   })
 
@@ -134,7 +138,8 @@ export async function assignCleanerToJob(jobId: string, cleanerId: string) {
         dateStr,
         `${APP_URL}/jobs/${jobId}`,
         `${APP_URL}/respond/${actionToken}`,
-        turnover
+        turnover,
+        checkoutTime
       ),
     })
   }

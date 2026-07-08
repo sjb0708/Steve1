@@ -59,11 +59,14 @@ export default async function RespondPage({ params }: { params: Promise<{ token:
                 </div>
                 <p className="text-sm text-slate-700 flex items-center gap-1.5">
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                  {format(new Date(job.scheduledDate), "EEEE, MMMM d 'at' h:mm a")}
+                  {format(new Date(job.scheduledDate), "EEEE, MMMM d")}
                 </p>
                 <p className="text-sm text-slate-700 flex items-center gap-1.5">
                   <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  About {Math.round(job.duration / 60 * 10) / 10} hours &middot; {job.property.bedrooms} bed / {job.property.bathrooms} bath
+                  Checkout: {job.property.checkoutTime} &middot; About {Math.round(job.duration / 60 * 10) / 10} hours to clean
+                </p>
+                <p className="text-sm text-slate-500 pl-5">
+                  {job.property.bedrooms} bed / {job.property.bathrooms} bath
                 </p>
                 {job.notes && (
                   <p className="text-sm text-slate-700 flex items-start gap-1.5">

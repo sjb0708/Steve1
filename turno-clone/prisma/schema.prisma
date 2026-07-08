@@ -49,6 +49,7 @@ model Property {
   vrboIcalUrl      String?
   cleaningDuration     Int
   cleaningFee          Float     @default(0)
+  checkoutTime         String    @default("11:00 AM")
   accessInstructions   String?
   lastSyncedAt         DateTime?
   createdAt        DateTime  @default(now())

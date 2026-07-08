@@ -60,7 +60,8 @@ export function jobAssignedEmail(
   date: string,
   jobUrl: string,
   respondUrl?: string,
-  isTurnover?: boolean
+  isTurnover?: boolean,
+  checkoutTime?: string
 ) {
   const turnoverBlock = isTurnover
     ? `
@@ -96,6 +97,7 @@ export function jobAssignedEmail(
           <p style="margin: 0; font-weight: bold; color: #0f172a;">${propertyName}</p>
           <p style="margin: 8px 0 0; color: #64748b; font-size: 14px;">DATE</p>
           <p style="margin: 0; font-weight: bold; color: #0f172a;">${date}</p>
+          ${checkoutTime ? `<p style="margin: 8px 0 0; color: #64748b; font-size: 14px;">CHECKOUT</p><p style="margin: 0; font-weight: bold; color: #0f172a;">${checkoutTime} — don't arrive before then</p>` : ""}
         </div>
         ${turnoverBlock}
         ${respondBlock}
