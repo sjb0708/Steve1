@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/Button"
 import { Spinner } from "@/components/ui/Spinner"
 import { formatCurrency } from "@/lib/utils"
 import { ChevronLeft, ChevronRight, Building2, Clock, User } from "lucide-react"
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday } from "date-fns"
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, addDays, subDays } from "date-fns"
 import { motion } from "framer-motion"
 import type { Job, Booking } from "@/types"
 
@@ -38,6 +38,79 @@ const STATUS_PILL: Record<string, string> = {
   CANCELLED: "bg-slate-100 text-slate-500",
 }
 
+const BAR_ROW_HEIGHT = 24
+const HEADER_ROW_HEIGHT = 34
+
+type Segment = {
+  booking: Booking
+  startCol: number
+  endCol: number
+  startFrac: number
+  endFrac: number
+  continuesLeft: boolean
+  continuesRight: boolean
+  lane: number
+}
+
+// Airbnb-style spanning bars: one continuous bar per stay across the week,
+// instead of separate IN/OUT tags stacked on each day. Bars start/end at the
+// MIDPOINT of the check-in/checkout day (guest leaves that morning, next
+// guest arrives that afternoon) so back-to-back bookings share a lane
+// instead of stacking — same visual language as Airbnb's own calendar.
+function buildWeekSegments(week: Date[], bookings: Booking[]): { segments: Segment[]; laneCount: number } {
+  const weekStart = week[0]
+  const weekEnd = week[6]
+  const segments: Segment[] = []
+
+  for (const b of bookings) {
+    // Booking dates are stored at noon UTC (see the iCal sync) to dodge
+    // off-by-one bugs elsewhere — but that means raw `<`/`>` against local
+    // midnight week boundaries can misfire. Normalize to calendar-date-only
+    // (local) before comparing, so a checkout at "noon" still lands on the
+    // right day relative to week boundaries built from local midnight.
+    const rawCheckIn = new Date(b.checkIn)
+    const rawCheckOut = new Date(b.checkOut)
+    const checkIn = new Date(rawCheckIn.getFullYear(), rawCheckIn.getMonth(), rawCheckIn.getDate())
+    const checkOut = new Date(rawCheckOut.getFullYear(), rawCheckOut.getMonth(), rawCheckOut.getDate())
+    if (checkOut < weekStart || checkIn > weekEnd) continue
+
+    const clippedStart = checkIn < weekStart ? weekStart : checkIn
+    const clippedEnd = checkOut > weekEnd ? weekEnd : checkOut
+    const startCol = week.findIndex((d) => isSameDay(d, clippedStart))
+    const endCol = week.findIndex((d) => isSameDay(d, clippedEnd))
+    if (startCol === -1 || endCol === -1) continue
+
+    const continuesLeft = checkIn < weekStart
+    const continuesRight = checkOut > weekEnd
+
+    segments.push({
+      booking: b,
+      startCol,
+      endCol,
+      startFrac: continuesLeft ? 0 : startCol + 0.5,
+      endFrac: continuesRight ? 7 : endCol + 0.5,
+      continuesLeft,
+      continuesRight,
+      lane: 0,
+    })
+  }
+
+  segments.sort((a, b) => a.startFrac - b.startFrac)
+  const laneEnds: number[] = []
+  for (const seg of segments) {
+    let lane = laneEnds.findIndex((end) => end <= seg.startFrac)
+    if (lane === -1) {
+      lane = laneEnds.length
+      laneEnds.push(seg.endFrac)
+    } else {
+      laneEnds[lane] = seg.endFrac
+    }
+    seg.lane = lane
+  }
+
+  return { segments, laneCount: laneEnds.length }
+}
+
 export default function CalendarPage() {
   const router = useRouter()
   const [currentMonth, setCurrentMonth] = useState(new Date())
@@ -57,9 +130,13 @@ export default function CalendarPage() {
 
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(currentMonth)
-  const days = eachDayOfInterval({ start: monthStart, end: monthEnd })
-  const startPad = monthStart.getDay()
-  const paddedDays = [...Array(startPad).fill(null), ...days]
+  // Full weeks including adjacent-month days (dimmed), like Airbnb's grid —
+  // so stay bars have real dates to span into at month boundaries.
+  const gridStart = subDays(monthStart, monthStart.getDay())
+  const gridEnd = addDays(monthEnd, 6 - monthEnd.getDay())
+  const allDays = eachDayOfInterval({ start: gridStart, end: gridEnd })
+  const weeks: Date[][] = []
+  for (let i = 0; i < allDays.length; i += 7) weeks.push(allDays.slice(i, i + 7))
 
   const getJobsForDay = (date: Date) =>
     jobs.filter((j) => j.status !== "CANCELLED" && isSameDay(new Date(j.scheduledDate), date))
@@ -116,65 +193,90 @@ export default function CalendarPage() {
                   ))}
                 </div>
 
-                <div className="grid grid-cols-7">
-                  {paddedDays.map((day, i) => {
-                    if (!day) return <div key={`pad-${i}`} className="min-h-[90px] border-b border-r border-slate-50" />
-                    const dayJobs = getJobsForDay(day)
-                    const dayBookingEvents = getBookingEventsForDay(day)
-                    const isSelected = selectedDay && isSameDay(day, selectedDay)
-                    const isCurrentDay = isToday(day)
-                    const inMonth = isSameMonth(day, currentMonth)
+                <div>
+                  {weeks.map((week) => {
+                    const { segments, laneCount } = buildWeekSegments(week, bookings)
+                    const rowHeight = HEADER_ROW_HEIGHT + Math.max(laneCount, 1) * BAR_ROW_HEIGHT + 6
 
                     return (
-                      <motion.div key={day.toISOString()} whileTap={{ scale: 0.97 }}
-                        onClick={() => setSelectedDay(day)}
-                        className={`min-h-[90px] p-2 border-b border-r border-slate-50 cursor-pointer transition-colors
-                          ${isSelected ? "bg-blue-50" : "hover:bg-slate-50"}
-                          ${!inMonth ? "opacity-30" : ""}`}>
-                        <div className={`w-7 h-7 flex items-center justify-center rounded-full text-sm font-medium mb-1.5 transition-colors
-                          ${isCurrentDay ? "bg-blue-600 text-white" : isSelected ? "bg-blue-100 text-blue-700" : "text-slate-700"}`}>
-                          {format(day, "d")}
+                      <div key={week[0].toISOString()} className="relative border-b border-slate-50" style={{ minHeight: rowHeight }}>
+                        {/* Day number strip */}
+                        <div className="grid grid-cols-7">
+                          {week.map((day) => {
+                            const isSelected = selectedDay && isSameDay(day, selectedDay)
+                            const isCurrentDay = isToday(day)
+                            const inMonth = isSameMonth(day, currentMonth)
+                            const checkoutJob = getJobsForDay(day).find((j) =>
+                              bookings.some((b) => b.id === j.bookingId && isSameDay(new Date(b.checkOut), day))
+                            )
+
+                            return (
+                              <motion.div key={day.toISOString()} whileTap={{ scale: 0.97 }}
+                                onClick={() => setSelectedDay(day)}
+                                className={`px-1.5 pt-1.5 border-r border-slate-50 cursor-pointer transition-colors flex items-start justify-between
+                                  ${isSelected ? "bg-blue-50" : "hover:bg-slate-50"}
+                                  ${!inMonth ? "opacity-40" : ""}`}
+                                style={{ height: HEADER_ROW_HEIGHT }}>
+                                <span className={`w-6 h-6 flex items-center justify-center rounded-full text-xs font-medium transition-colors
+                                  ${isCurrentDay ? "bg-blue-600 text-white" : isSelected ? "bg-blue-100 text-blue-700" : "text-slate-700"}`}>
+                                  {format(day, "d")}
+                                </span>
+                                {checkoutJob && (
+                                  <span className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${STATUS_DOT[checkoutJob.status]}`} title={STATUS_LABEL[checkoutJob.status]} />
+                                )}
+                              </motion.div>
+                            )
+                          })}
                         </div>
-                        <div className="space-y-0.5">
-                          {dayBookingEvents.slice(0, 2).map((ev, idx) => (
-                            <div key={`${ev.booking.id}-${ev.type}-${idx}`}
-                              className={`text-[10px] px-1.5 py-px rounded truncate font-semibold tracking-wide
-                                ${ev.type === "OUT" ? "bg-rose-50 text-rose-600" : "bg-teal-50 text-teal-600"}`}>
-                              {ev.type === "OUT" ? "◂ OUT" : "▸ IN"} {ev.booking.property?.name?.split(" ")[0] ?? ""}
-                            </div>
+
+                        {/* Spanning stay bars — positioned by fraction-of-week, not whole grid columns,
+                            so a checkout and the next check-in on the same day sit edge-to-edge, not stacked */}
+                        <div className="relative" style={{ height: Math.max(laneCount, 1) * BAR_ROW_HEIGHT }}>
+                          {segments.map((seg) => (
+                            <button
+                              key={`${seg.booking.id}-${seg.lane}`}
+                              type="button"
+                              onClick={() => setSelectedDay(week[seg.startCol])}
+                              className={`absolute flex items-center px-2 h-5 text-[11px] font-medium text-white bg-indigo-700/90 hover:bg-indigo-800 truncate transition-colors
+                                ${seg.continuesLeft ? "" : "rounded-l-full"}
+                                ${seg.continuesRight ? "" : "rounded-r-full"}`}
+                              style={{
+                                top: seg.lane * BAR_ROW_HEIGHT,
+                                left: `calc(${(seg.startFrac / 7) * 100}% + ${seg.continuesLeft ? 0 : 2}px)`,
+                                width: `calc(${((seg.endFrac - seg.startFrac) / 7) * 100}% - ${(seg.continuesLeft ? 0 : 2) + (seg.continuesRight ? 0 : 2)}px)`,
+                              }}
+                            >
+                              {seg.booking.guestName ?? "Reserved"} · {seg.booking.property?.name?.split(" ")[0] ?? ""}
+                            </button>
                           ))}
-                          {dayJobs.slice(0, 3).map((job) => (
-                            <div key={job.id}
-                              className={`text-xs px-1.5 py-0.5 rounded-md truncate font-medium ${STATUS_PILL[job.status] ?? "bg-slate-100 text-slate-500"}`}>
-                              {job.property?.name?.split(" ")[0] ?? "Job"}
-                            </div>
-                          ))}
-                          {dayJobs.length > 3 && (
-                            <p className="text-xs text-slate-400 pl-1">+{dayJobs.length - 3} more</p>
-                          )}
                         </div>
-                      </motion.div>
+                      </div>
                     )
                   })}
                 </div>
               </Card>
 
               {/* Legend */}
-              <div className="flex flex-wrap gap-4 mt-4">
-                {[
-                  { color: "bg-amber-400", label: "Needs Cleaner" },
-                  { color: "bg-purple-400", label: "Awaiting Confirmation" },
-                  { color: "bg-blue-500", label: "Assigned" },
-                  { color: "bg-orange-500", label: "In Progress" },
-                  { color: "bg-emerald-500", label: "Completed" },
-                  { color: "bg-teal-400", label: "Guest Check-in" },
-                  { color: "bg-rose-400", label: "Guest Check-out" },
-                ].map((l) => (
-                  <div key={l.label} className="flex items-center gap-2 text-sm text-slate-600">
-                    <span className={`w-2.5 h-2.5 rounded-full ${l.color}`} />
-                    {l.label}
-                  </div>
-                ))}
+              <div className="mt-4 space-y-2">
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <span className="w-3.5 h-2 rounded-full bg-indigo-700/90" />
+                  Guest stay (bar spans check-in to checkout)
+                </div>
+                <div className="flex flex-wrap items-center gap-4">
+                  <span className="text-xs text-slate-400">Cleaning status, shown as a dot on checkout day:</span>
+                  {[
+                    { color: "bg-amber-400", label: "Needs Cleaner" },
+                    { color: "bg-purple-400", label: "Awaiting Confirmation" },
+                    { color: "bg-blue-500", label: "Assigned" },
+                    { color: "bg-orange-500", label: "In Progress" },
+                    { color: "bg-emerald-500", label: "Completed" },
+                  ].map((l) => (
+                    <div key={l.label} className="flex items-center gap-1.5 text-sm text-slate-600">
+                      <span className={`w-2.5 h-2.5 rounded-full ${l.color}`} />
+                      {l.label}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
