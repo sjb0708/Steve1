@@ -39,6 +39,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.city !== undefined) updateData.city = body.city
     if (body.state !== undefined) updateData.state = body.state
     if (body.description !== undefined) updateData.description = body.description
+    if (body.bedrooms !== undefined) updateData.bedrooms = parseInt(body.bedrooms)
+    if (body.bathrooms !== undefined) updateData.bathrooms = parseFloat(body.bathrooms)
     if (body.airbnbIcalUrl !== undefined) updateData.airbnbIcalUrl = body.airbnbIcalUrl || null
     if (body.vrboIcalUrl !== undefined) updateData.vrboIcalUrl = body.vrboIcalUrl || null
     if (body.cleaningDuration !== undefined) updateData.cleaningDuration = parseInt(body.cleaningDuration)

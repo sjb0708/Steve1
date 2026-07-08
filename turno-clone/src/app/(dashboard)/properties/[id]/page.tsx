@@ -44,7 +44,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [photoError, setPhotoError] = useState("")
 
   // Edit property fields
-  const [editForm, setEditForm] = useState({ airbnbIcalUrl: "", vrboIcalUrl: "", cleaningDuration: "", cleaningFee: "", accessInstructions: "" })
+  const [editForm, setEditForm] = useState({ bedrooms: "", bathrooms: "", airbnbIcalUrl: "", vrboIcalUrl: "", cleaningDuration: "", cleaningFee: "", accessInstructions: "" })
   const [editingSettings, setEditingSettings] = useState(false)
 
   useEffect(() => {
@@ -55,6 +55,8 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
         if (!prop) { router.push("/properties"); return }
         setProperty(prop)
         setEditForm({
+          bedrooms: String(prop.bedrooms),
+          bathrooms: String(prop.bathrooms),
           airbnbIcalUrl: prop.airbnbIcalUrl || "",
           vrboIcalUrl: prop.vrboIcalUrl || "",
           cleaningDuration: String(prop.cleaningDuration),
@@ -297,6 +299,14 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           {editingSettings && (
             <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
               className="mt-5 pt-5 border-t border-slate-100 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Input label="Bedrooms" type="number" icon={Bed}
+                  value={editForm.bedrooms} min="1" max="20"
+                  onChange={(e) => setEditForm((f) => ({ ...f, bedrooms: e.target.value }))} />
+                <Input label="Bathrooms" type="number" icon={Bath}
+                  value={editForm.bathrooms} min="1" max="20" step="0.5"
+                  onChange={(e) => setEditForm((f) => ({ ...f, bathrooms: e.target.value }))} />
+              </div>
               <Input label="Airbnb iCal URL" icon={Link2}
                 placeholder="https://www.airbnb.com/calendar/ical/..."
                 value={editForm.airbnbIcalUrl}
