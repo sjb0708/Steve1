@@ -20,11 +20,12 @@ import {
 import Link from "next/link"
 import { motion } from "framer-motion"
 
-type StatusFilter = "ALL" | "UNASSIGNED" | "ASSIGNED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"
+type StatusFilter = "ALL" | "UNASSIGNED" | "PENDING_ACCEPTANCE" | "ASSIGNED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED"
 
 const STATUS_FILTERS: { label: string; value: StatusFilter }[] = [
   { label: "All", value: "ALL" },
-  { label: "Unassigned", value: "UNASSIGNED" },
+  { label: "Needs Cleaner", value: "UNASSIGNED" },
+  { label: "Awaiting Confirmation", value: "PENDING_ACCEPTANCE" },
   { label: "Assigned", value: "ASSIGNED" },
   { label: "In Progress", value: "IN_PROGRESS" },
   { label: "Completed", value: "COMPLETED" },
@@ -149,13 +150,17 @@ function CreateJobModal({ open, onClose, onCreated }: CreateJobModalProps) {
 function AdminJobsView() {
   const searchParams = useSearchParams()
   const [jobs, setJobs] = useState<Job[]>([])
+  const [allProperties, setAllProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<StatusFilter>("ALL")
   const [search, setSearch] = useState("")
   const [showCreate, setShowCreate] = useState(false)
 
-  // Pre-filter by propertyId from URL (e.g. from property detail page)
+  // Pre-filter by propertyId from URL (e.g. from property detail page);
+  // the dropdown below takes over as the source of truth after that
   const propertyIdParam = searchParams.get("propertyId")
+  const [propertyFilter, setPropertyFilter] = useState(propertyIdParam || "ALL")
+  const [platformFilter, setPlatformFilter] = useState<"ALL" | "airbnb" | "vrbo">("ALL")
 
   async function loadJobs() {
     try {
@@ -171,10 +176,17 @@ function AdminJobsView() {
     }
   }
 
-  useEffect(() => { loadJobs() }, [])
+  useEffect(() => {
+    loadJobs()
+    fetch("/api/properties")
+      .then((r) => r.json())
+      .then((d) => setAllProperties(d.properties ?? []))
+      .catch(() => {})
+  }, [])
 
   const filtered = jobs.filter((j) => {
-    if (propertyIdParam && j.property?.id !== propertyIdParam) return false
+    if (propertyFilter !== "ALL" && j.property?.id !== propertyFilter) return false
+    if (platformFilter !== "ALL" && j.booking?.platform?.toLowerCase() !== platformFilter) return false
     if (filter !== "ALL" && j.status !== filter) return false
     if (search) {
       const q = search.toLowerCase()
@@ -197,11 +209,7 @@ function AdminJobsView() {
     <>
       <Header
         title="Jobs"
-        subtitle={
-          propertyIdParam
-            ? `${filtered.length} job${filtered.length !== 1 ? "s" : ""} for this property`
-            : `${filtered.length} job${filtered.length !== 1 ? "s" : ""}`
-        }
+        subtitle={`${filtered.length} job${filtered.length !== 1 ? "s" : ""}`}
         actions={
           <Button size="sm" onClick={() => setShowCreate(true)}>
             <Plus className="w-4 h-4" /> Create Job
@@ -210,16 +218,21 @@ function AdminJobsView() {
       />
 
       <div className="p-6 max-w-5xl space-y-5">
-        {/* Property filter banner */}
-        {propertyIdParam && (
+        {/* Property / platform filter banner */}
+        {(propertyFilter !== "ALL" || platformFilter !== "ALL") && (
           <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-xl text-sm">
             <span className="text-blue-700 font-medium flex items-center gap-2">
               <Building2 className="w-4 h-4" />
-              Filtered by property
+              {propertyFilter !== "ALL" && (allProperties.find((p) => p.id === propertyFilter)?.name ?? "Filtered")}
+              {propertyFilter !== "ALL" && platformFilter !== "ALL" && " · "}
+              {platformFilter !== "ALL" && (platformFilter === "airbnb" ? "Airbnb" : "VRBO")}
             </span>
-            <Link href="/jobs" className="text-blue-600 hover:text-blue-700 font-medium text-xs">
-              Clear filter →
-            </Link>
+            <button
+              onClick={() => { setPropertyFilter("ALL"); setPlatformFilter("ALL") }}
+              className="text-blue-600 hover:text-blue-700 font-medium text-xs"
+            >
+              Clear filters →
+            </button>
           </div>
         )}
         {/* Filters */}
@@ -233,21 +246,40 @@ function AdminJobsView() {
               className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-slate-300 transition-all"
             />
           </div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {STATUS_FILTERS.map((f) => (
-              <button
-                key={f.value}
-                onClick={() => setFilter(f.value)}
-                className={`px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
-                  filter === f.value
-                    ? "bg-blue-600 text-white shadow-sm"
-                    : "bg-white text-slate-600 border border-slate-200 hover:border-blue-300"
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
+          <Select
+            value={propertyFilter}
+            onChange={(e) => setPropertyFilter(e.target.value)}
+            className="sm:w-52"
+            options={[
+              { value: "ALL", label: "All Properties" },
+              ...allProperties.map((p) => ({ value: p.id, label: p.name })),
+            ]}
+          />
+          <Select
+            value={platformFilter}
+            onChange={(e) => setPlatformFilter(e.target.value as "ALL" | "airbnb" | "vrbo")}
+            className="sm:w-40"
+            options={[
+              { value: "ALL", label: "All Platforms" },
+              { value: "airbnb", label: "Airbnb" },
+              { value: "vrbo", label: "VRBO" },
+            ]}
+          />
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFilter(f.value)}
+              className={`px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                filter === f.value
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-white text-slate-600 border border-slate-200 hover:border-blue-300"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
         </div>
 
         {/* Job list */}
@@ -297,13 +329,13 @@ function AdminJobsView() {
                         </span>
                         {job.booking && (
                           <span className={`px-2 py-0.5 rounded-full font-medium ${
-                            job.booking.platform === "AIRBNB"
+                            job.booking.platform?.toLowerCase() === "airbnb"
                               ? "bg-rose-100 text-rose-700"
-                              : job.booking.platform === "VRBO"
+                              : job.booking.platform?.toLowerCase() === "vrbo"
                               ? "bg-blue-100 text-blue-700"
                               : "bg-slate-100 text-slate-600"
                           }`}>
-                            {job.booking.platform}
+                            {job.booking.platform?.toLowerCase() === "airbnb" ? "Airbnb" : job.booking.platform?.toLowerCase() === "vrbo" ? "VRBO" : job.booking.platform}
                           </span>
                         )}
                       </div>

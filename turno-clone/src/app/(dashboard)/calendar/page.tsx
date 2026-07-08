@@ -4,12 +4,13 @@ import { useRouter } from "next/navigation"
 import { Header } from "@/components/layout/Header"
 import { Card } from "@/components/ui/Card"
 import { Button } from "@/components/ui/Button"
+import { Select } from "@/components/ui/Select"
 import { Spinner } from "@/components/ui/Spinner"
 import { formatCurrency } from "@/lib/utils"
 import { ChevronLeft, ChevronRight, Building2, Clock, User } from "lucide-react"
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, isToday, addDays, subDays } from "date-fns"
 import { motion } from "framer-motion"
-import type { Job, Booking } from "@/types"
+import type { Job, Booking, Property } from "@/types"
 
 const STATUS_DOT: Record<string, string> = {
   UNASSIGNED: "bg-amber-400",
@@ -152,16 +153,27 @@ export default function CalendarPage() {
   const [selectedDay, setSelectedDay] = useState<Date | null>(new Date())
   const [jobs, setJobs] = useState<Job[]>([])
   const [bookings, setBookings] = useState<Booking[]>([])
+  const [allProperties, setAllProperties] = useState<Property[]>([])
   const [loading, setLoading] = useState(true)
+  const [propertyFilter, setPropertyFilter] = useState("ALL")
+  const [platformFilter, setPlatformFilter] = useState<"ALL" | "airbnb" | "vrbo">("ALL")
 
   useEffect(() => {
     Promise.all([
       fetch("/api/jobs?limit=200").then((r) => r.json()).then((d) => setJobs(d.jobs || [])),
       fetch("/api/bookings").then((r) => (r.ok ? r.json() : { bookings: [] })).then((d) => setBookings(d.bookings || [])),
+      fetch("/api/properties").then((r) => r.json()).then((d) => setAllProperties(d.properties || [])),
     ])
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [])
+
+  const matchesFilters = (propertyId: string | undefined, platform: string | undefined) =>
+    (propertyFilter === "ALL" || propertyId === propertyFilter) &&
+    (platformFilter === "ALL" || platform?.toLowerCase() === platformFilter)
+
+  const visibleJobs = jobs.filter((j) => matchesFilters(j.property?.id, j.booking?.platform))
+  const visibleBookings = bookings.filter((b) => matchesFilters(b.property?.id, b.platform))
 
   const monthStart = startOfMonth(currentMonth)
   const monthEnd = endOfMonth(currentMonth)
@@ -174,11 +186,11 @@ export default function CalendarPage() {
   for (let i = 0; i < allDays.length; i += 7) weeks.push(allDays.slice(i, i + 7))
 
   const getJobsForDay = (date: Date) =>
-    jobs.filter((j) => j.status !== "CANCELLED" && isSameDay(new Date(j.scheduledDate), date))
+    visibleJobs.filter((j) => j.status !== "CANCELLED" && isSameDay(new Date(j.scheduledDate), date))
 
   const getBookingEventsForDay = (date: Date) => {
     const events: { booking: Booking; type: "IN" | "OUT" }[] = []
-    for (const b of bookings) {
+    for (const b of visibleBookings) {
       if (isSameDay(new Date(b.checkIn), date)) events.push({ booking: b, type: "IN" })
       if (isSameDay(new Date(b.checkOut), date)) events.push({ booking: b, type: "OUT" })
     }
@@ -189,7 +201,7 @@ export default function CalendarPage() {
   const selectedDayBookingEvents = selectedDay ? getBookingEventsForDay(selectedDay) : []
 
   const propertyById = new Map<string, NonNullable<Booking["property"]>>()
-  for (const b of bookings) {
+  for (const b of visibleBookings) {
     if (b.property?.id && !propertyById.has(b.property.id)) propertyById.set(b.property.id, b.property)
   }
   const distinctProperties = Array.from(propertyById.values())
@@ -219,6 +231,29 @@ export default function CalendarPage() {
         <div className="flex items-center justify-center h-96"><Spinner size="lg" /></div>
       ) : (
         <div className="p-6 max-w-[1800px]">
+          {allProperties.length > 1 && (
+            <div className="flex flex-wrap gap-3 mb-4">
+              <Select
+                value={propertyFilter}
+                onChange={(e) => setPropertyFilter(e.target.value)}
+                className="w-52"
+                options={[
+                  { value: "ALL", label: "All Properties" },
+                  ...allProperties.map((p) => ({ value: p.id, label: p.name })),
+                ]}
+              />
+              <Select
+                value={platformFilter}
+                onChange={(e) => setPlatformFilter(e.target.value as "ALL" | "airbnb" | "vrbo")}
+                className="w-40"
+                options={[
+                  { value: "ALL", label: "All Platforms" },
+                  { value: "airbnb", label: "Airbnb" },
+                  { value: "vrbo", label: "VRBO" },
+                ]}
+              />
+            </div>
+          )}
           <div className="grid lg:grid-cols-[1fr_340px] gap-6">
             {/* Calendar grid */}
             <div>
@@ -231,7 +266,7 @@ export default function CalendarPage() {
 
                 <div>
                   {weeks.map((week) => {
-                    const { segments, laneCount } = buildWeekSegments(week, bookings)
+                    const { segments, laneCount } = buildWeekSegments(week, visibleBookings)
                     const rowHeight = HEADER_ROW_HEIGHT + Math.max(laneCount, 1) * BAR_ROW_HEIGHT + 6
 
                     return (
