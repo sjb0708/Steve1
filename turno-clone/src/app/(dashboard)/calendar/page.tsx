@@ -47,6 +47,14 @@ const STATUS_SHORT_LABEL: Record<string, string> = {
   COMPLETED: "Cleaned",
 }
 
+// Once a cleaner has accepted, the badge is more useful showing who than
+// the generic "Assigned" status — that's the info Steve actually wants at
+// a glance on the checkout day.
+function checkoutBadgeText(job: Job) {
+  if (job.status === "ASSIGNED" && job.cleaner?.name) return job.cleaner.name.split(" ")[0]
+  return STATUS_SHORT_LABEL[job.status] ?? job.status
+}
+
 const BAR_ROW_HEIGHT = 34
 const HEADER_ROW_HEIGHT = 64
 
@@ -250,8 +258,11 @@ export default function CalendarPage() {
                                   {format(day, "d")}
                                 </span>
                                 {checkoutJob && (
-                                  <span className={`self-start px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none truncate max-w-full ${STATUS_PILL[checkoutJob.status] ?? "bg-slate-100 text-slate-500"}`}>
-                                    {STATUS_SHORT_LABEL[checkoutJob.status] ?? checkoutJob.status}
+                                  <span
+                                    className={`self-start px-1.5 py-0.5 rounded text-[10px] font-semibold leading-none truncate max-w-full ${STATUS_PILL[checkoutJob.status] ?? "bg-slate-100 text-slate-500"}`}
+                                    title={checkoutJob.status === "ASSIGNED" && checkoutJob.cleaner?.name ? `Assigned to ${checkoutJob.cleaner.name}` : STATUS_LABEL[checkoutJob.status]}
+                                  >
+                                    {checkoutBadgeText(checkoutJob)}
                                   </span>
                                 )}
                               </motion.div>
