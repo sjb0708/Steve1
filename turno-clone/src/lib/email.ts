@@ -59,8 +59,16 @@ export function jobAssignedEmail(
   propertyName: string,
   date: string,
   jobUrl: string,
-  respondUrl?: string
+  respondUrl?: string,
+  isTurnover?: boolean
 ) {
+  const turnoverBlock = isTurnover
+    ? `
+        <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 12px 16px; margin: 16px 0;">
+          <p style="margin: 0; font-weight: bold; color: #9a3412;">⚡ Same-day turnover</p>
+          <p style="margin: 4px 0 0; color: #9a3412; font-size: 14px;">A new guest checks in today — please plan for a quick turnaround.</p>
+        </div>`
+    : ""
   const respondBlock = respondUrl
     ? `
         <p style="color: #334155; margin: 20px 0 12px;">Tap below to respond — no login needed:</p>
@@ -89,6 +97,7 @@ export function jobAssignedEmail(
           <p style="margin: 8px 0 0; color: #64748b; font-size: 14px;">DATE</p>
           <p style="margin: 0; font-weight: bold; color: #0f172a;">${date}</p>
         </div>
+        ${turnoverBlock}
         ${respondBlock}
         <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Bailey Development Group Cleaning Management</p>
       </div>

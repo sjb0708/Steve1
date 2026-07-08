@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma"
 import { format } from "date-fns"
-import { MapPin, Calendar, Clock, StickyNote } from "lucide-react"
+import { MapPin, Calendar, Clock, StickyNote, Zap } from "lucide-react"
 import RespondButtons from "./respond-buttons"
+import { isSameDayTurnover } from "@/lib/jobs"
 
 // Public landing page for one-click job responses from email.
 // No auth — access is the single-use token itself.
@@ -22,6 +23,7 @@ export default async function RespondPage({ params }: { params: Promise<{ token:
 
   const expired = job?.actionTokenExpiry ? job.actionTokenExpiry < new Date() : false
   const valid = job && job.status === "PENDING_ACCEPTANCE" && !expired
+  const turnover = valid ? await isSameDayTurnover(job.propertyId, new Date(job.scheduledDate), job.bookingId) : false
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -70,6 +72,15 @@ export default async function RespondPage({ params }: { params: Promise<{ token:
                   </p>
                 )}
               </div>
+              {turnover && (
+                <div className="flex items-start gap-2 bg-orange-50 border border-orange-200 rounded-xl p-3 mb-6">
+                  <Zap className="w-4 h-4 text-orange-600 mt-0.5 shrink-0 fill-current" />
+                  <div>
+                    <p className="text-sm font-bold text-orange-800">Same-day turnover</p>
+                    <p className="text-xs text-orange-700 mt-0.5">A new guest checks in today — this one needs a quick turnaround.</p>
+                  </div>
+                </div>
+              )}
               <RespondButtons token={token} />
               {job.host?.phone && (
                 <p className="text-xs text-slate-400 text-center mt-5">

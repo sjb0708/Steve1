@@ -75,6 +75,22 @@ export async function ensureJobForBooking(
   return null
 }
 
+// True when another booking on this property checks in the same calendar
+// day this job's booking checks out — the cleaner gets zero buffer, so the
+// assignment message needs to say so up front, not bury it.
+export async function isSameDayTurnover(propertyId: string, date: Date, excludeBookingId?: string | null) {
+  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000)
+  const incoming = await prisma.booking.findFirst({
+    where: {
+      propertyId,
+      ...(excludeBookingId ? { id: { not: excludeBookingId } } : {}),
+      checkIn: { gte: dayStart, lt: dayEnd },
+    },
+  })
+  return !!incoming
+}
+
 // Single assignment path: sets PENDING_ACCEPTANCE, issues a one-click respond
 // token, notifies + emails the cleaner. Used by job create AND reassign so the
 // accept/decline step can never be bypassed.
@@ -95,6 +111,7 @@ export async function assignCleanerToJob(jobId: string, cleanerId: string) {
   })
 
   const dateStr = format(new Date(job.scheduledDate), "EEEE, MMMM d 'at' h:mm a")
+  const turnover = await isSameDayTurnover(job.propertyId, new Date(job.scheduledDate), job.bookingId)
 
   await prisma.notification.create({
     data: {
@@ -102,7 +119,7 @@ export async function assignCleanerToJob(jobId: string, cleanerId: string) {
       jobId,
       type: "JOB_ASSIGNED",
       title: "New Job — Action Required",
-      message: `You've been assigned a cleaning job at ${job.property?.name} on ${dateStr}. Please accept or decline.`,
+      message: `You've been assigned a cleaning job at ${job.property?.name} on ${dateStr}.${turnover ? " ⚡ Same-day turnover — a new guest checks in today, so it needs a quick turnaround." : ""} Please accept or decline.`,
     },
   })
 
@@ -110,13 +127,14 @@ export async function assignCleanerToJob(jobId: string, cleanerId: string) {
   if (cleaner?.emailNotifications && cleaner.email) {
     await sendEmail({
       to: cleaner.email,
-      subject: `New cleaning job at ${job.property?.name} — ${dateStr}`,
+      subject: `New cleaning job at ${job.property?.name} — ${dateStr}${turnover ? " (same-day turnover)" : ""}`,
       html: jobAssignedEmail(
         cleaner.name,
         job.property?.name ?? "",
         dateStr,
         `${APP_URL}/jobs/${jobId}`,
-        `${APP_URL}/respond/${actionToken}`
+        `${APP_URL}/respond/${actionToken}`,
+        turnover
       ),
     })
   }
