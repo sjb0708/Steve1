@@ -34,6 +34,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (body.bio !== undefined) updateData.bio = body.bio || null
       if (body.emailNotifications !== undefined) updateData.emailNotifications = body.emailNotifications
       if (body.appNotifications !== undefined) updateData.appNotifications = body.appNotifications
+      if (body.notificationChannel !== undefined) updateData.notificationChannel = body.notificationChannel
+      if (body.paymentMethod !== undefined) updateData.paymentMethod = body.paymentMethod || null
+      if (body.paymentDetails !== undefined) updateData.paymentDetails = body.paymentDetails || null
+      if (body.email !== undefined) {
+        const normalized = body.email.trim().toLowerCase()
+        const existing = await prisma.user.findUnique({ where: { email: normalized } })
+        if (existing && existing.id !== id) {
+          return NextResponse.json({ error: "A user with that email already exists" }, { status: 409 })
+        }
+        updateData.email = normalized
+      }
     }
 
     const updated = await prisma.user.update({
@@ -51,6 +62,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         approved: true,
         emailNotifications: true,
         appNotifications: true,
+        notificationChannel: true,
+        paymentMethod: true,
+        paymentDetails: true,
         createdAt: true,
       },
     })

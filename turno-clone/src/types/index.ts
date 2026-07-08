@@ -16,6 +16,9 @@ export interface User {
   approved: boolean
   emailNotifications: boolean
   appNotifications: boolean
+  notificationChannel?: string
+  paymentMethod?: string | null
+  paymentDetails?: string | null
   createdAt: string
 }
 

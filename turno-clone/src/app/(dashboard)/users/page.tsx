@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/Button"
 import { Spinner } from "@/components/ui/Spinner"
 import { Modal } from "@/components/ui/Modal"
 import { Input } from "@/components/ui/Input"
+import { Select } from "@/components/ui/Select"
 import { formatDate } from "@/lib/utils"
 import type { User } from "@/types"
 import {
   UserCheck, UserX, Users, Mail, Phone, MapPin,
-  Plus, Copy, CheckCircle2, AlertCircle, Shield,
+  Plus, Copy, CheckCircle2, AlertCircle, Shield, Pencil, KeyRound,
 } from "lucide-react"
 import { motion } from "framer-motion"
 
@@ -235,6 +236,214 @@ function AddCleanerModal({ open, onClose, onAdded }: AddCleanerModalProps) {
   )
 }
 
+// ─── Edit Cleaner Modal ───────────────────────────────────────────────────────
+
+const PAYMENT_METHODS = [
+  { value: "", label: "Not set" },
+  { value: "Zelle", label: "Zelle" },
+  { value: "PayPal", label: "PayPal" },
+  { value: "Venmo", label: "Venmo" },
+  { value: "Bank Transfer", label: "Bank Transfer" },
+  { value: "Cash", label: "Cash" },
+  { value: "Other", label: "Other" },
+]
+
+const NOTIFICATION_CHANNELS = [
+  { value: "EMAIL", label: "Email only" },
+  { value: "TEXT", label: "Text only" },
+  { value: "BOTH", label: "Email + Text" },
+]
+
+interface EditCleanerModalProps {
+  user: User | null
+  onClose: () => void
+  onSaved: (user: User) => void
+}
+
+function EditCleanerModal({ user, onClose, onSaved }: EditCleanerModalProps) {
+  const [form, setForm] = useState({
+    name: "", email: "", phone: "", notificationChannel: "EMAIL", paymentMethod: "", paymentDetails: "",
+  })
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    if (user) {
+      setForm({
+        name: user.name,
+        email: user.email,
+        phone: user.phone || "",
+        notificationChannel: user.notificationChannel || "EMAIL",
+        paymentMethod: user.paymentMethod || "",
+        paymentDetails: user.paymentDetails || "",
+      })
+      setError("")
+    }
+  }, [user])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!user) return
+    setError("")
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/users/${user.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(d.error ?? "Failed to save changes.")
+        return
+      }
+      onSaved(d.user)
+      onClose()
+    } catch {
+      setError("Something went wrong.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  const paymentLabel =
+    form.paymentMethod === "Zelle" ? "Zelle phone or email"
+    : form.paymentMethod === "PayPal" ? "PayPal email or @handle"
+    : form.paymentMethod === "Venmo" ? "Venmo @handle"
+    : form.paymentMethod === "Bank Transfer" ? "Account / routing info"
+    : form.paymentMethod === "Other" ? "Details"
+    : null
+
+  return (
+    <Modal open={!!user} onClose={onClose} title="Edit Cleaner" description={user?.name}>
+      <div className="p-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Input label="Full Name" value={form.name} icon={Users}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required />
+          <Input label="Email Address" type="email" value={form.email} icon={Mail}
+            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} required />
+          <Input label="Phone" type="tel" value={form.phone} icon={Phone}
+            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+          <Select label="Notification Preference"
+            value={form.notificationChannel}
+            onChange={(e) => setForm((f) => ({ ...f, notificationChannel: e.target.value }))}
+            options={NOTIFICATION_CHANNELS} />
+          <p className="text-xs text-slate-400 -mt-2">Text isn&apos;t live yet — this is saved and ready for when it is.</p>
+          <Select label="Payment Method"
+            value={form.paymentMethod}
+            onChange={(e) => setForm((f) => ({ ...f, paymentMethod: e.target.value }))}
+            options={PAYMENT_METHODS} />
+          {paymentLabel && (
+            <Input label={paymentLabel} value={form.paymentDetails}
+              onChange={(e) => setForm((f) => ({ ...f, paymentDetails: e.target.value }))} />
+          )}
+          {error && (
+            <p className="text-sm text-red-600 flex items-center gap-1.5">
+              <AlertCircle className="w-4 h-4" /> {error}
+            </p>
+          )}
+          <div className="flex gap-3 pt-2">
+            <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+            <Button type="submit" className="flex-1" disabled={submitting}>
+              {submitting ? <Spinner size="sm" /> : "Save Changes"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </Modal>
+  )
+}
+
+// ─── Send Login Invite Modal ──────────────────────────────────────────────────
+
+interface SendInviteModalProps {
+  user: User | null
+  onClose: () => void
+}
+
+function SendInviteModal({ user, onClose }: SendInviteModalProps) {
+  const [submitting, setSubmitting] = useState(false)
+  const [inviteUrl, setInviteUrl] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    if (user) {
+      setInviteUrl(null)
+      setCopied(false)
+      setError("")
+    }
+  }, [user])
+
+  async function send() {
+    if (!user) return
+    setError("")
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/users/${user.id}/invite`, { method: "POST" })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(d.error ?? "Failed to send invite.")
+        return
+      }
+      setInviteUrl(d.inviteUrl)
+    } catch {
+      setError("Something went wrong.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function copyUrl() {
+    if (!inviteUrl) return
+    await navigator.clipboard.writeText(inviteUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <Modal open={!!user} onClose={onClose} title="Send Login Invite" description={`Let ${user?.name} set a password and log in`}>
+      <div className="p-6 space-y-4">
+        {!inviteUrl ? (
+          <>
+            <p className="text-sm text-slate-600">
+              This is separate from job-assignment emails — it lets {user?.name} log into the app directly to see their schedule any time, not just when assigned a specific job. An email will be sent to {user?.email} with a link to set their password.
+            </p>
+            {error && (
+              <p className="text-sm text-red-600 flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4" /> {error}
+              </p>
+            )}
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="outline" className="flex-1" onClick={onClose}>Cancel</Button>
+              <Button className="flex-1" onClick={send} disabled={submitting}>
+                {submitting ? <Spinner size="sm" /> : "Send Invite"}
+              </Button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+              <p className="text-sm font-medium text-emerald-800">Invite sent (or logged, if email isn&apos;t configured yet).</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium text-slate-600 mb-2">Link (in case email doesn&apos;t arrive):</p>
+              <div className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <p className="text-xs text-slate-700 flex-1 break-all font-mono">{inviteUrl}</p>
+                <button onClick={copyUrl} className="p-1.5 rounded-lg hover:bg-slate-200 transition-colors flex-shrink-0">
+                  {copied ? <CheckCircle2 className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-500" />}
+                </button>
+              </div>
+            </div>
+            <Button className="w-full" variant="outline" onClick={onClose}>Done</Button>
+          </>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 // ─── User card ────────────────────────────────────────────────────────────────
 
 interface UserCardProps {
@@ -243,10 +452,12 @@ interface UserCardProps {
   onApprove?: (id: string) => void
   onReject?: (id: string) => void
   onDeactivate?: (id: string) => void
+  onEdit?: (user: User) => void
+  onSendInvite?: (user: User) => void
   actionLoading?: string | null
 }
 
-function UserCard({ user, pending, onApprove, onReject, onDeactivate, actionLoading }: UserCardProps) {
+function UserCard({ user, pending, onApprove, onReject, onDeactivate, onEdit, onSendInvite, actionLoading }: UserCardProps) {
   const loading = actionLoading === user.id
 
   return (
@@ -296,10 +507,24 @@ function UserCard({ user, pending, onApprove, onReject, onDeactivate, actionLoad
               {user.bio && (
                 <p className="text-xs text-slate-500 mt-2 leading-relaxed line-clamp-2">{user.bio}</p>
               )}
+              {user.role === "CLEANER" && !pending && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 pt-1 mt-1 border-t border-slate-50 text-xs text-slate-500">
+                  <span>
+                    Notify: <span className="font-medium text-slate-700">
+                      {user.notificationChannel === "TEXT" ? "Text only" : user.notificationChannel === "BOTH" ? "Email + Text" : "Email only"}
+                    </span>
+                  </span>
+                  <span>
+                    Pay via: <span className="font-medium text-slate-700">
+                      {user.paymentMethod ? `${user.paymentMethod}${user.paymentDetails ? ` (${user.paymentDetails})` : ""}` : "Not set"}
+                    </span>
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Actions */}
-            {(pending || onDeactivate) && (
+            {(pending || onDeactivate || onEdit) && (
               <div className="flex flex-wrap gap-2 mt-3">
                 {pending && onApprove && (
                   <Button
@@ -321,6 +546,24 @@ function UserCard({ user, pending, onApprove, onReject, onDeactivate, actionLoad
                   >
                     {loading ? <Spinner size="sm" /> : <UserX className="w-3.5 h-3.5" />}
                     Reject
+                  </Button>
+                )}
+                {!pending && user.role === "CLEANER" && onEdit && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onEdit(user)}
+                  >
+                    <Pencil className="w-3.5 h-3.5" /> Edit
+                  </Button>
+                )}
+                {!pending && user.role === "CLEANER" && onSendInvite && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onSendInvite(user)}
+                  >
+                    <KeyRound className="w-3.5 h-3.5" /> Send Login Invite
                   </Button>
                 )}
                 {!pending && onDeactivate && user.role === "CLEANER" && (
@@ -355,6 +598,8 @@ export default function UsersPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [showInvite, setShowInvite] = useState(false)
   const [showAddCleaner, setShowAddCleaner] = useState(false)
+  const [editingUser, setEditingUser] = useState<User | null>(null)
+  const [invitingUser, setInvitingUser] = useState<User | null>(null)
 
   async function loadUsers() {
     try {
@@ -501,6 +746,8 @@ export default function UsersPage() {
                       key={u.id}
                       user={u}
                       onDeactivate={handleDeactivate}
+                      onEdit={setEditingUser}
+                      onSendInvite={setInvitingUser}
                       actionLoading={actionLoading}
                     />
                   ))}
@@ -517,6 +764,12 @@ export default function UsersPage() {
         onClose={() => setShowAddCleaner(false)}
         onAdded={(u) => setUsers((prev) => [u, ...prev])}
       />
+      <EditCleanerModal
+        user={editingUser}
+        onClose={() => setEditingUser(null)}
+        onSaved={(u) => setUsers((prev) => prev.map((p) => p.id === u.id ? { ...p, ...u } : p))}
+      />
+      <SendInviteModal user={invitingUser} onClose={() => setInvitingUser(null)} />
     </div>
   )
 }

@@ -20,6 +20,9 @@ model User {
   approved           Boolean   @default(false)
   emailNotifications Boolean   @default(true)
   appNotifications   Boolean   @default(true)
+  notificationChannel String   @default("EMAIL")
+  paymentMethod      String?
+  paymentDetails     String?
   inviteToken        String?   @unique
   inviteExpiry       DateTime?
   createdAt          DateTime  @default(now())

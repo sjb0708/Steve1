@@ -133,6 +133,29 @@ export function cleanerConfirmedEmail(cleanerName: string, propertyName: string,
   `
 }
 
+// Separate from the per-job accept/decline links — this sets up a real
+// login (password) for a cleaner who was added via Add Cleaner and has
+// never had a way to actually sign into the app.
+export function loginInviteEmail(name: string, inviteUrl: string) {
+  return `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background: #1e40af; padding: 24px; border-radius: 12px 12px 0 0;">
+        <h1 style="color: white; margin: 0; font-size: 20px;">Set Up Your Login</h1>
+        <p style="color: #bfdbfe; margin: 4px 0 0;">Bailey Development Group</p>
+      </div>
+      <div style="background: white; padding: 24px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+        <p style="color: #334155;">Hi ${name},</p>
+        <p style="color: #334155;">You can now log into the app to see your full cleaning schedule any time — no need to wait for individual job emails. Tap below to set your password:</p>
+        <a href="${inviteUrl}" style="display: inline-block; background: #1e40af; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; margin: 16px 0;">
+          Set My Password
+        </a>
+        <p style="color: #94a3b8; font-size: 13px;">This link expires in 7 days. You'll still get individual job offers by email either way.</p>
+        <p style="color: #94a3b8; font-size: 12px; margin-top: 24px;">Bailey Development Group Cleaning Management</p>
+      </div>
+    </div>
+  `
+}
+
 export function jobAcceptedEmail(adminName: string, cleanerName: string, propertyName: string, date: string, jobUrl: string) {
   return `
     <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">

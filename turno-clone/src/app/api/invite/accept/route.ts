@@ -21,9 +21,9 @@ export async function POST(req: NextRequest) {
     if (user.inviteExpiry && user.inviteExpiry < new Date()) {
       return NextResponse.json({ error: "This invite link has expired" }, { status: 400 })
     }
-    if (user.password !== "") {
-      return NextResponse.json({ error: "This invite has already been used" }, { status: 400 })
-    }
+    // No longer requires password === "" — this same accept flow is reused
+    // to send existing cleaners (created with an unknown random password) a
+    // way to set their own password and log in for the first time.
 
     const hashed = await bcrypt.hash(password, 12)
 
