@@ -553,7 +553,7 @@ function Estimator({ inputs, markets, samplesFor, occupancyFor, helocAvailable }
       }
       const samples = samplesFor(nearest.mk.id)
       const occ = occupancyFor(nearest.mk)
-      const est = estimateNightly(home, samples, inputs)
+      const est = estimateNightly(home, samples, inputs, nearest.mk)
       setResult({
         address: place.displayName,
         approximate,

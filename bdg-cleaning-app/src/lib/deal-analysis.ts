@@ -569,10 +569,30 @@ export const CONFIDENCE_LABEL: Record<Confidence, string> = {
   none: "None — not enough similar homes nearby",
 }
 
+// Every comp is priced as a two-night stay, and Airbnb's displayed total for
+// a dated stay includes the cleaning fee. Dividing that total by two spreads
+// a whole cleaning fee across two nights, while the cost side of the model
+// spreads the owner's cleaning cost across an average stay of three. Left
+// alone, the same fee is counted as revenue at one rate and as cost at
+// another, and the gap flatters every house.
+//
+// The guest's cleaning fee isn't visible in the total on its own, so the
+// owner's own cost per turn stands in for it — in a short-term rental the
+// two are usually within a few dollars, and it is a number the owner set
+// himself rather than one invented here.
+export const COMP_SAMPLE_NIGHTS = 2
+
+export function cleaningSpreadPerNight(inputs: MarketAnalysisInputs, market: MarketSettings): number {
+  const avgStay = Math.max(1, inputs.revenue.avgStayNights ?? COMP_SAMPLE_NIGHTS)
+  const fee = Math.max(0, market.expenses.cleaningCostPerTurn ?? 0)
+  return fee * (1 / COMP_SAMPLE_NIGHTS - 1 / avgStay)
+}
+
 export function estimateNightly(
   home: ForSaleHome,
   samples: StrSample[],
   inputs: MarketAnalysisInputs,
+  market: MarketSettings,
 ) {
   const beds = Math.min(6, Math.max(2, Math.round(home.beds ?? 3)))
   const radius = inputs.revenue.compRadiusMiles ?? 5
@@ -595,7 +615,13 @@ export function estimateNightly(
   const p25 = percentile(nightlies, 0.25)
   const p75 = percentile(nightlies, 0.75)
   const spread = guestNightly && p25 !== null && p75 !== null ? (p75 - p25) / guestNightly : null
-  const toHost = (v: number | null) => (v === null ? null : v / (1 + pct(inputs.revenue.guestServiceFeePct)))
+  // Airbnb's service fee never reaches the host, and the cleaning fee has to
+  // be re-spread from the two nights it was sampled over to the stay length
+  // the costs assume. A floor keeps a large fee in a cheap market from
+  // driving the rate to nothing.
+  const feeSpread = cleaningSpreadPerNight(inputs, market)
+  const toHost = (v: number | null) =>
+    v === null ? null : Math.max(v * 0.5, v / (1 + pct(inputs.revenue.guestServiceFeePct)) - feeSpread)
   return {
     guestNightly,
     hostNightly: toHost(guestNightly),
@@ -735,7 +761,7 @@ export function analyzeDeal(
   const { revenue: rv, loan, heloc, goals } = inputs
   const ex = market.expenses
   const price = priceOverride ?? home.price
-  const est = estimateNightly(home, samples, inputs)
+  const est = estimateNightly(home, samples, inputs, market)
   // Every sample is one distinct Airbnb, so these counts are listings.
   const strWithinMile = samples.filter(
     (s) => milesBetween(home.latitude, home.longitude, s.lat, s.lng) <= 1,
@@ -844,6 +870,18 @@ export function analyzeDeal(
     goalNotes.push("Earns less than the equity line costs")
   }
   if (breakEvenOccupancy !== null && breakEvenOccupancy > occ) goalNotes.push("Break-even occupancy is above the estimate")
+
+  // Occupancy moves every figure here more than anything else does. When it
+  // is the plain default — nobody's override, no measured competitors, no
+  // history of the owner's own — a house passing every goal is telling you
+  // about the guess, not about the house. It still gets its numbers; it does
+  // not get to say it clears the bar.
+  const occupancyMeasured =
+    market.occupancyPct !== null || occupancy.market !== null || occupancy.own !== null
+  if (!occupancyMeasured && meetsGoals) {
+    meetsGoals = false
+    goalNotes.push("No measured occupancy for this market yet — set one to judge this deal")
+  }
 
   return {
     price,
