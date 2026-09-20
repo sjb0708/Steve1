@@ -170,6 +170,39 @@ test("the buy box filters on price, beds, baths, type and distance", () => {
   assert.equal(inBuyBox(home({ latitude: 30.5 }), mk), false, "outside the radius")
 })
 
+test("the sale pays depreciation recapture and capital gains before it pays you", () => {
+  const m = analyzeDeal(home(), market(), inputs(), comps(228), measured, 500_000)
+  const p = project(home(), market(), inputs(), m)!
+  assert.ok(p.accumulatedDepreciation > 0, "ten years of deductions were taken")
+
+  // Every deduction taken is recaptured at sale, so long as there is gain to
+  // cover it, and the rest of the gain is a capital gain.
+  near(p.recaptureTax, Math.min(p.accumulatedDepreciation, p.gainOnSale) * 0.25, 1, "recapture at 25%")
+  near(
+    p.capitalGainsTax,
+    Math.max(0, p.gainOnSale - Math.min(p.accumulatedDepreciation, p.gainOnSale)) * 0.15,
+    1,
+    "capital gains at 15%",
+  )
+  assert.ok(p.saleTax > 0, "a sale at a gain is not tax-free")
+
+  // And the proceeds are what's left after the taxman, not before him
+  const lastYear = p.years[p.years.length - 1]
+  const amountRealized = lastYear.propertyValue * (1 - (DEFAULT_INPUTS.hold.sellingCostPct ?? 0) / 100)
+  near(p.saleProceeds, amountRealized - lastYear.loanBalance - m.helocDraw - p.saleTax, 2, "net proceeds")
+})
+
+test("no gain means no tax on the sale", () => {
+  // No appreciation and heavy selling costs, so what comes back is less than
+  // the basis even after a decade of depreciation has lowered it.
+  const flat = inputs({ hold: { ...DEFAULT_INPUTS.hold, appreciationPct: 0, sellingCostPct: 60 } })
+  const m = analyzeDeal(home(), market(), flat, comps(228), measured, 500_000)
+  const p = project(home(), market(), flat, m)!
+  assert.ok(p.gainOnSale < 0, "sold at a loss after costs")
+  assert.equal(p.recaptureTax, 0, "nothing to recapture")
+  assert.equal(p.capitalGainsTax, 0, "and no gain to tax")
+})
+
 test("the ten-year projection carries year one's cash flow and returns no IRR without own cash", () => {
   const m = analyzeDeal(home(), market(), inputs(), comps(228), measured, 500_000)
   const p = project(home(), market(), inputs(), m)

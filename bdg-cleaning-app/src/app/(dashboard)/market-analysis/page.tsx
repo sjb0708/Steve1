@@ -795,7 +795,9 @@ function ProjectionPanel({ p, inputs }: { p: Projection | null; inputs: MarketAn
       <Line label="Cash flow, all years" value={money(p.totalCashFlow)} />
       <Line label="After tax" value={money(p.totalAfterTaxCashFlow)} />
       <Line label="Equity at sale" value={money(p.equityAtExit)} />
-      <Line label="Proceeds after costs & payoff" value={money(p.saleProceeds)} />
+      <Line label="Depreciation recapture tax" value={money(-p.recaptureTax)} />
+      <Line label="Capital gains tax" value={money(-p.capitalGainsTax)} />
+      <Line label="Proceeds after costs, payoff & tax" value={money(p.saleProceeds)} />
       <Line label="Total profit" value={money(p.totalProfit)} strong negative={p.totalProfit < 0} />
       <Line
         label="Annual return on your cash"
@@ -844,7 +846,12 @@ function DealDetail({ home, inputs, market, samples, occupancy, helocAvailable, 
   // Null means "at the asking price". Type a number and every figure in this
   // panel is what that offer would buy you.
   const [offerPrice, setOfferPrice] = useState<number | null>(null)
+  const [showComps, setShowComps] = useState(false)
   const price = offerPrice !== null && offerPrice > 0 ? offerPrice : home.price
+
+  // The same call the estimate itself makes, so what's listed below is
+  // literally what the rate was taken from — not a re-derivation of it.
+  const est = useMemo(() => estimateNightly(home, samples, inputs, market), [home, samples, inputs, market])
 
   const m = useMemo(
     () => analyzeDeal(home, market, inputs, samples, occupancy, helocAvailable, price),
@@ -866,6 +873,52 @@ function DealDetail({ home, inputs, market, samples, occupancy, helocAvailable, 
       <div>
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Yearly income &amp; costs</p>
         <Line label={`Nightly rate (${m.nightlySource === "override" ? "your override" : `${m.airbnbComps} nearby Airbnbs`})`} value={money(m.nightly)} />
+        {est.comps.length > 0 && m.nightlySource !== "override" && (
+          <div className="mb-1">
+            <button type="button" onClick={() => setShowComps((v) => !v)}
+              className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1">
+              {showComps ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              {showComps ? "Hide" : "Show"} the {est.comps.length} Airbnbs behind this rate
+            </button>
+            {showComps && (
+              <>
+                <table className="w-full text-xs mt-2">
+                  <thead>
+                    <tr className="text-left text-slate-500 border-b border-slate-100">
+                      <th className="py-1 pr-3 font-medium">Away</th>
+                      <th className="py-1 pr-3 font-medium">Beds</th>
+                      <th className="py-1 pr-3 font-medium text-right">Asking / night</th>
+                      <th className="py-1 font-medium" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {est.comps.slice(0, 25).map((c, i) => (
+                      <tr key={i} className="border-t border-slate-50">
+                        <td className="py-1 pr-3 text-slate-600">{c.miles.toFixed(1)} mi</td>
+                        <td className="py-1 pr-3 text-slate-600">{c.bedrooms}</td>
+                        <td className="py-1 pr-3 text-slate-800 text-right">{money(c.nightly)}</td>
+                        <td className="py-1">
+                          {c.listingId && (
+                            <a href={`https://www.airbnb.com/rooms/${c.listingId}`} target="_blank" rel="noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="text-blue-600 hover:underline inline-flex items-center gap-1">
+                              open <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="text-[11px] text-slate-400 mt-1.5">
+                  Guest-facing asking prices for upcoming nights. The estimate takes the middle one, removes Airbnb&apos;s
+                  guest fee, and re-spreads the cleaning fee across a {inputs.revenue.avgStayNights ?? 3}-night stay.
+                  Open any of them and check.
+                </p>
+              </>
+            )}
+          </div>
+        )}
         <Line label={`Occupancy (${OCCUPANCY_SOURCE[m.occupancySource]})`} value={pct(m.occupancy, 0)} />
         <Line label="Nights booked" value={Math.round(m.nightsBooked).toString()} />
         <Line label="Gross revenue" value={money(m.revenue)} strong />
@@ -1773,6 +1826,10 @@ export default function MarketAnalysisPage() {
                     hint="Write-off taken in year one on short-life property. 100% under the 2025 bill." />
                   <NumberField label="Cost segregation" suffix="% of building" step="1" value={draft.hold.costSegSharePct} onChange={(v) => setGlobal("hold", { costSegSharePct: v })}
                     hint="Share a study reclassifies as short-life. 0 if you won’t pay for one; 20–25% is typical." />
+                  <NumberField label="Capital gains rate" suffix="%" step="1" value={draft.hold.capitalGainsRatePct} onChange={(v) => setGlobal("hold", { capitalGainsRatePct: v })}
+                    hint="Paid on the gain when you sell. 15% for most; 20% at the top bracket." />
+                  <NumberField label="Depreciation recapture" suffix="%" step="1" value={draft.hold.depreciationRecaptureRatePct} onChange={(v) => setGlobal("hold", { depreciationRecaptureRatePct: v })}
+                    hint="Every year's depreciation is taken back at sale, capped at 25%." />
                 </div>
                 <p className="text-[11px] text-slate-400">Estimates only, not tax advice. The building depreciates over 27.5 years; losses carry forward.</p>
               </Section>

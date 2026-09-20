@@ -256,8 +256,9 @@ export async function loadMarketAnalysisData() {
       })
     }
   }
-  const strSamples: StrSample[] = [...byListing.values()].map((s) => ({
-    marketId: s.marketId, bedrooms: s.bedrooms, lat: s.lat, lng: s.lng, nightly: Math.round(s.total / s.count),
+  const strSamples: StrSample[] = [...byListing.entries()].map(([listingId, s]) => ({
+    marketId: s.marketId, listingId, bedrooms: s.bedrooms, lat: s.lat, lng: s.lng,
+    nightly: Math.round(s.total / s.count),
   }))
 
   // When each market's listings were last confirmed, so the page can say so

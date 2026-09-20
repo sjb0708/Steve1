@@ -118,6 +118,8 @@ export interface MarketAnalysisInputs {
     expenseGrowthPct: number | null
     sellingCostPct: number | null
     incomeTaxRatePct: number | null
+    capitalGainsRatePct: number | null
+    depreciationRecaptureRatePct: number | null
     // Land can't be depreciated; the rest of the price can, over 27.5 years
     landSharePct: number | null
     furnishingLifeYears: number | null
@@ -221,6 +223,8 @@ export const DEFAULT_INPUTS: MarketAnalysisInputs = {
     expenseGrowthPct: 3,
     sellingCostPct: 8,
     incomeTaxRatePct: 24,
+    capitalGainsRatePct: 15,
+    depreciationRecaptureRatePct: 25,
     landSharePct: 20,
     furnishingLifeYears: 5,
     bonusDepreciationPct: 100,
@@ -421,6 +425,8 @@ export function sanitizeInputs(raw: unknown, defaults: MarketAnalysisInputs = DE
       expenseGrowthPct: num(hold.expenseGrowthPct, d.hold.expenseGrowthPct, -20, 30),
       sellingCostPct: num(hold.sellingCostPct, d.hold.sellingCostPct, 0, 20),
       incomeTaxRatePct: num(hold.incomeTaxRatePct, d.hold.incomeTaxRatePct, 0, 60),
+      capitalGainsRatePct: num(hold.capitalGainsRatePct, d.hold.capitalGainsRatePct, 0, 40),
+      depreciationRecaptureRatePct: num(hold.depreciationRecaptureRatePct, d.hold.depreciationRecaptureRatePct, 0, 40),
       landSharePct: num(hold.landSharePct, d.hold.landSharePct, 0, 90),
       furnishingLifeYears: num(hold.furnishingLifeYears, d.hold.furnishingLifeYears, 1, 30),
       bonusDepreciationPct: num(hold.bonusDepreciationPct, d.hold.bonusDepreciationPct, 0, 100),
@@ -477,6 +483,10 @@ export interface ForSaleHome {
 
 export interface StrSample {
   marketId: string
+  // Airbnb's own listing id, so a comp can be opened and checked rather than
+  // taken on trust. An estimate you can't audit is an estimate you can't argue
+  // with, and the whole point of these numbers is that they get argued with.
+  listingId?: string
   bedrooms: number
   lat: number
   lng: number
@@ -604,6 +614,7 @@ export function estimateNightly(
   // estimate you can't inspect is one you can't argue with.
   const compList = comps
     .map((c) => ({
+      listingId: c.listingId ?? null,
       bedrooms: c.bedrooms,
       nightly: c.nightly,
       miles: milesBetween(home.latitude, home.longitude, c.lat, c.lng),
@@ -992,6 +1003,13 @@ export interface Projection {
   years: ProjectionYear[]
   totalCashFlow: number
   totalAfterTaxCashFlow: number
+  // Every year's depreciation deduction is borrowed from the sale, not given:
+  // the IRS takes it back as recapture when the house is sold.
+  accumulatedDepreciation: number
+  gainOnSale: number
+  recaptureTax: number
+  capitalGainsTax: number
+  saleTax: number
   saleProceeds: number
   totalProfit: number
   equityAtExit: number
@@ -1100,9 +1118,20 @@ export function project(
   }
 
   const last = rows[rows.length - 1]
-  // Selling costs come out, the mortgage is repaid, and the equity line is
-  // paid back from the proceeds
-  const saleProceeds = last.propertyValue * (1 - pct(h.sellingCostPct)) - last.loanBalance - m.helocDraw
+  // Selling costs come out, the mortgage is repaid, the equity line is paid
+  // back — and the tax collector takes a turn. Every depreciation deduction
+  // taken above is recaptured, and what is left of the gain is a capital
+  // gain. A ten-year figure that skips both isn't "after tax", it's a
+  // brochure.
+  const accumulatedDepreciation = rows.reduce((sum, r) => sum + r.depreciation, 0)
+  const amountRealized = last.propertyValue * (1 - pct(h.sellingCostPct))
+  const adjustedBasis = Math.max(0, m.price + m.furnishing - accumulatedDepreciation)
+  const gainOnSale = amountRealized - adjustedBasis
+  const recaptured = Math.max(0, Math.min(accumulatedDepreciation, gainOnSale))
+  const recaptureTax = recaptured * pct(h.depreciationRecaptureRatePct)
+  const capitalGainsTax = Math.max(0, gainOnSale - recaptured) * pct(h.capitalGainsRatePct)
+  const saleTax = recaptureTax + capitalGainsTax
+  const saleProceeds = amountRealized - last.loanBalance - m.helocDraw - saleTax
   const totalCashFlow = rows.reduce((sum, r) => sum + r.cashFlow, 0)
   const totalAfterTaxCashFlow = rows.reduce((sum, r) => sum + r.afterTaxCashFlow, 0)
   const cashInvested = m.ownCash
@@ -1112,6 +1141,11 @@ export function project(
     years: rows,
     totalCashFlow,
     totalAfterTaxCashFlow,
+    accumulatedDepreciation,
+    gainOnSale,
+    recaptureTax,
+    capitalGainsTax,
+    saleTax,
     saleProceeds,
     totalProfit: totalAfterTaxCashFlow + saleProceeds - cashInvested,
     equityAtExit: last.equity,
