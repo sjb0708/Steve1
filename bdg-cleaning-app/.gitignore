@@ -45,3 +45,6 @@ next-env.d.ts
 
 # local sqlite dev database
 dev.db
+
+# Local data dumps from purges — real job records, not code
+backups/
