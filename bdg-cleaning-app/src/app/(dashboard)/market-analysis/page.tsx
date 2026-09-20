@@ -67,6 +67,7 @@ const OCCUPANCY_SOURCE: Record<DealMetrics["occupancySource"], string> = {
   override: "your input",
   market: "similar Airbnbs, last 30 days",
   own: "your houses, both channels",
+  bookedAhead: "competitors' next 30 days — a floor, not a year",
   fallback: "a plain 50% default",
 }
 
@@ -1371,7 +1372,8 @@ export default function MarketAnalysisPage() {
     market.occupancyPct !== null ? "override"
       : occupancy.market !== null ? "market"
         : occupancy.own !== null ? "own"
-          : "fallback"
+          : occupancy.bookedAhead != null ? "bookedAhead"
+            : "fallback"
   const seenOn = data.listingsSeenByMarket?.[market.id] ?? null
   const daysStale =
     seenOn && data.today
@@ -1452,17 +1454,29 @@ export default function MarketAnalysisPage() {
           </div>
         </div>
 
-        {occupancySource === "fallback" && (
+        {(occupancySource === "fallback" || occupancySource === "bookedAhead") && (
           <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-amber-50 border border-amber-200">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-amber-900">
-                Nothing here is measured yet — {market.label} is running on a plain 50% occupancy guess
+                {occupancySource === "bookedAhead"
+                  ? `${market.label} is priced on a conservative floor, not a measured year`
+                  : `Nothing here is measured yet — ${market.label} is running on a plain 50% occupancy guess`}
               </p>
               <p className="text-sm text-amber-800 mt-0.5">
-                Occupancy decides every number below it, and a guess can turn losing houses green. Type what you believe
-                for this market, or wait for its competitors&apos; calendars to reach 30 days
-                {occupancy.historyDays > 0 ? ` (day ${occupancy.historyDays} of 30)` : ""}.
-                {occupancy.bookedAhead !== null && ` Competitors here are ${pct(occupancy.bookedAhead, 0)} booked for the next month, which runs low as a yearly figure.`}
+                {occupancySource === "bookedAhead" ? (
+                  <>
+                    Competitors here are <b>{pct(occupancy.bookedAhead, 0)} booked for the coming month</b> — real, but it
+                    reads low as a yearly figure because near dates keep filling in. Anything clearing your goals at this
+                    rate has room underneath it; anything failing might still work. A full year of competitors&apos;
+                    calendars lands on day 30 (day {occupancy.historyDays} of 30).
+                  </>
+                ) : (
+                  <>
+                    Occupancy decides every number below it, and a guess can turn losing houses green. Type what you
+                    believe for this market, or wait for its competitors&apos; calendars to reach 30 days
+                    {occupancy.historyDays > 0 ? ` (day ${occupancy.historyDays} of 30)` : ""}.
+                  </>
+                )}
               </p>
             </div>
             <Button size="sm" variant="outline" onClick={() => setShowSettings(true)}>Set occupancy</Button>

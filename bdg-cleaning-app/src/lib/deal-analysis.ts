@@ -652,7 +652,7 @@ export interface DealMetrics {
   // Revenue if comps' cheaper / middle / pricier rates hold
   revenueRange: { low: number; base: number; high: number } | null
   occupancy: number
-  occupancySource: "override" | "market" | "own" | "fallback"
+  occupancySource: "override" | "market" | "own" | "bookedAhead" | "fallback"
   nightsBooked: number
   revenue: number | null
   expenses: {
@@ -701,6 +701,10 @@ export interface MarketSignalsLite {
 export interface OccupancyEstimates {
   market: number | null
   own: number | null
+  // Competitors' nights already taken for the month ahead. Measured, but it
+  // reads low as a yearly figure because near dates keep filling in — so it
+  // is a floor, used only when nothing better has been measured yet.
+  bookedAhead?: number | null
   signals?: MarketSignalsLite | null
 }
 
@@ -782,7 +786,9 @@ export function analyzeDeal(
   const marketNightly = est.hostNightly === null ? null : est.hostNightly * achievedRatio
   const nightly = market.nightlyOverride ?? marketNightly
   const occ =
-    market.occupancyPct !== null ? market.occupancyPct / 100 : occupancy.market ?? occupancy.own ?? 0.5
+    market.occupancyPct !== null
+      ? market.occupancyPct / 100
+      : occupancy.market ?? occupancy.own ?? occupancy.bookedAhead ?? 0.5
   const nightsBooked = 365 * occ
   const avgStay = Math.max(1, rv.avgStayNights ?? 3)
 
@@ -877,7 +883,10 @@ export function analyzeDeal(
   // about the guess, not about the house. It still gets its numbers; it does
   // not get to say it clears the bar.
   const occupancyMeasured =
-    market.occupancyPct !== null || occupancy.market !== null || occupancy.own !== null
+    market.occupancyPct !== null ||
+    occupancy.market !== null ||
+    occupancy.own !== null ||
+    occupancy.bookedAhead != null
   if (!occupancyMeasured && meetsGoals) {
     meetsGoals = false
     goalNotes.push("No measured occupancy for this market yet — set one to judge this deal")
@@ -901,7 +910,9 @@ export function analyzeDeal(
           ? "market"
           : occupancy.own !== null
             ? "own"
-            : "fallback",
+            : occupancy.bookedAhead != null
+              ? "bookedAhead"
+              : "fallback",
     nightsBooked,
     revenue,
     expenses,
@@ -950,7 +961,11 @@ export function maxOffer(
     if (meets(mid)) low = mid
     else high = mid
   }
-  return Math.round(low / 1000) * 1000
+  // Round DOWN to the thousand. `low` is the highest price known to clear the
+  // goals, and rounding to the nearest thousand can land above it — handing
+  // back an offer that doesn't actually work, which is the one thing this
+  // number must never do.
+  return Math.floor(low / 1000) * 1000
 }
 
 // ── Holding period ───────────────────────────────────────────────────────

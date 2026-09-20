@@ -4,6 +4,7 @@
 // then snapshots each home's availability calendar. Run once a day.
 
 import { prisma } from "@/lib/prisma"
+import { addDays, dayOfWeek, todayInOcala } from "@/lib/dates"
 import { airbnbListingIdFromIcal } from "@/lib/airbnb-listing"
 
 const USER_AGENT =
@@ -29,19 +30,7 @@ const STALE_RUN_MS = 10 * 60 * 1000
 
 export class AirbnbBlockedError extends Error {}
 
-export function todayInOcala(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date())
-}
-
-export function addDays(ymd: string, days: number): string {
-  const d = new Date(`${ymd}T12:00:00Z`)
-  d.setUTCDate(d.getUTCDate() + days)
-  return d.toISOString().slice(0, 10)
-}
-
-export function dayOfWeek(ymd: string): number {
-  return new Date(`${ymd}T12:00:00Z`).getUTCDay()
-}
+export { todayInOcala, addDays, dayOfWeek } from "@/lib/dates"
 
 // Sampled 2-night stays: Friday–Sunday for weekends, Tuesday–Thursday for weekdays
 // A comparable home must sleep at least ~75% of our guest count

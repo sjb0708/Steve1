@@ -6,7 +6,7 @@
 // calendar, not guests, so it counts as neither — the same rule AirDNA uses
 // when it separates blocked nights from bookings.
 
-import { addDays } from "@/lib/market-data"
+import { addDays } from "@/lib/dates"
 
 export type Availability = Record<string, boolean>
 export type DayState = "open" | "booked" | "blocked"
