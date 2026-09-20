@@ -127,27 +127,54 @@ async function occupancyByMarket(today: string): Promise<Record<string, MarketOc
 
 // The owner's own houses: booked nights over the last 12 months from synced
 // Airbnb/VRBO bookings. The fallback when a market has no history yet.
+// Airbnb's iCal export carries only current and future reservations, so a
+// house's Airbnb history begins the day its feed was first read — while
+// VRBO's carries the past. Measuring across that seam counts VRBO-only
+// months as if they were the whole business and reports an occupancy far
+// below the truth. Each house is therefore measured only from the point
+// every platform it is listed on has data, and only once that stretch is
+// long enough that a single season can't masquerade as the year.
+const OWN_OCCUPANCY_MIN_DAYS = 180
+
 async function ownOccupancyLast12Months(): Promise<number | null> {
   const today = todayInOcala()
   const start = addDays(today, -365)
-  const properties = await prisma.property.findMany({ select: { bookings: { select: { checkIn: true, checkOut: true } } } })
+  const properties = await prisma.property.findMany({
+    select: {
+      airbnbIcalUrl: true,
+      vrboIcalUrl: true,
+      bookings: { select: { checkIn: true, checkOut: true, platform: true } },
+    },
+  })
   const rates: number[] = []
   for (const p of properties) {
     if (!p.bookings.length) continue
     const nights = new Set<string>()
     let first = today
+    const firstByPlatform = new Map<string, string>()
     for (const b of p.bookings) {
       const checkIn = b.checkIn.toISOString().slice(0, 10)
       const checkOut = b.checkOut.toISOString().slice(0, 10)
       if (checkIn < first) first = checkIn
+      const seen = firstByPlatform.get(b.platform)
+      if (!seen || checkIn < seen) firstByPlatform.set(b.platform, checkIn)
       for (let d = checkIn; d < checkOut; d = addDays(d, 1)) {
         if (d >= start && d < today) nights.add(d)
       }
     }
-    // A house listed less than a year ago is measured from its first booking
-    const from = first > start ? first : start
+    // The latest "first booking" among the platforms this house is listed on:
+    // before that date at least one channel is missing from the record.
+    let covered = first
+    for (const [platform, url] of [["airbnb", p.airbnbIcalUrl], ["vrbo", p.vrboIcalUrl]] as const) {
+      if (!url) continue
+      const firstSeen = firstByPlatform.get(platform)
+      if (firstSeen && firstSeen > covered) covered = firstSeen
+    }
+    const from = covered > start ? covered : start
     const days = Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000)
-    if (days >= 30) rates.push(nights.size / days)
+    if (days < OWN_OCCUPANCY_MIN_DAYS) continue
+    const booked = [...nights].filter((d) => d >= from).length
+    rates.push(booked / days)
   }
   return rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : null
 }

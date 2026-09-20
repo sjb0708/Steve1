@@ -66,8 +66,8 @@ const pct = (v: number | null | undefined, digits = 1) => (v == null ? "—" : `
 const OCCUPANCY_SOURCE: Record<DealMetrics["occupancySource"], string> = {
   override: "your input",
   market: "similar Airbnbs, last 30 days",
-  own: "your houses, last 12 months",
-  fallback: "default 50%",
+  own: "your houses, both channels",
+  fallback: "a plain 50% default",
 }
 
 // ── Input controls ───────────────────────────────────────────────────────
@@ -167,7 +167,7 @@ function HowItWorks({ market, occupancy, signals, inputs }: {
         ? `${pct(occupancy.market, 0)} — measured from ${occupancy.listings} competitors' calendars in ${market.label} over the last 30 days.`
         : occupancy.own !== null
           ? `${pct(occupancy.own, 0)} — your own two houses' booked nights over the last 12 months, because ${market.label} doesn't have 30 days of history yet${occupancy.bookedAhead !== null ? ` (its competitors are ${pct(occupancy.bookedAhead, 0)} booked for next month, day ${occupancy.historyDays} of 30)` : ""}.`
-          : "50% — a plain default, because there's no booking history yet."
+          : "50% — a plain default. Your own houses can't stand in for it: Airbnb's calendar feed only starts the day it was connected, so their history is VRBO-only before July 2026 and too short after it. Type the number you believe for this market, or wait for its competitors' calendars to reach 30 days."
 
   return (
     <Card className="border-blue-100 bg-blue-50/40">
@@ -1365,6 +1365,13 @@ export default function MarketAnalysisPage() {
   const marketHomes = data.homes.filter((h) => (h.marketId ? h.marketId === market.id : true))
   // Staleness is a fact about this market, not about the last run of any
   // market, so it is measured from this market's own listings.
+  // Which of the four sources the occupancy actually came from. A number
+  // nobody measured shouldn't be handing out green ticks in silence.
+  const occupancySource: DealMetrics["occupancySource"] =
+    market.occupancyPct !== null ? "override"
+      : occupancy.market !== null ? "market"
+        : occupancy.own !== null ? "own"
+          : "fallback"
   const seenOn = data.listingsSeenByMarket?.[market.id] ?? null
   const daysStale =
     seenOn && data.today
@@ -1444,6 +1451,23 @@ export default function MarketAnalysisPage() {
             </Button>
           </div>
         </div>
+
+        {occupancySource === "fallback" && (
+          <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-amber-50 border border-amber-200">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-amber-900">
+                Nothing here is measured yet — {market.label} is running on a plain 50% occupancy guess
+              </p>
+              <p className="text-sm text-amber-800 mt-0.5">
+                Occupancy decides every number below it, and a guess can turn losing houses green. Type what you believe
+                for this market, or wait for its competitors&apos; calendars to reach 30 days
+                {occupancy.historyDays > 0 ? ` (day ${occupancy.historyDays} of 30)` : ""}.
+                {occupancy.bookedAhead !== null && ` Competitors here are ${pct(occupancy.bookedAhead, 0)} booked for the next month, which runs low as a yearly figure.`}
+              </p>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setShowSettings(true)}>Set occupancy</Button>
+          </div>
+        )}
 
         {daysStale !== null && daysStale >= 2 && !running && (
           <div className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-2xl bg-amber-50 border border-amber-100">
