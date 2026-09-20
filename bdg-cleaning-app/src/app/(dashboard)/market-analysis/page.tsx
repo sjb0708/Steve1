@@ -923,7 +923,9 @@ function DealDetail({ home, inputs, market, samples, occupancy, helocAvailable, 
         {offer !== null && (
           <p className="text-xs text-slate-500 mt-2">
             Highest price that still meets your goals: <b className="text-slate-900">{money(offer)}</b>
-            {offer < home.price ? ` — ${money(home.price - offer)} below asking` : " — above asking"}
+            {offer < home.price
+              ? ` — ${money(home.price - offer)} below asking, so that is the offer to make`
+              : ` — ${money(offer - home.price)} above the asking price, so it already works at asking`}
           </p>
         )}
 
@@ -963,7 +965,7 @@ function DealDetail({ home, inputs, market, samples, occupancy, helocAvailable, 
               <NumberField label="Your offer" prefix="$" step="1000" value={offerPrice}
                 onChange={setOfferPrice} placeholder={String(home.price)} />
             </div>
-            {offer !== null && offer !== home.price && (
+            {offer !== null && offer < home.price && (
               <Button size="sm" variant="outline" onClick={() => setOfferPrice(offer)}>
                 Use {money(offer)}
               </Button>
@@ -1801,9 +1803,9 @@ export default function MarketAnalysisPage() {
               <Stat label={`Homes in ${market.label}`} value={String(results.length)} sub={`of ${marketHomes.length} for sale in the area`} />
               <Stat label="Meet your goals" value={String(goalCount)} sub={draft.goals.targetCashOnCashPct !== null ? `${draft.goals.targetCashOnCashPct}%+ cash-on-cash` : "Positive cash flow"} />
               <Stat
-                label="Best max offer vs asking"
-                value={bestOffer?.offer != null ? money(bestOffer.offer) : "—"}
-                sub={bestOffer?.offer != null ? `${bestOffer.home.address} (asking ${money(bestOffer.home.price)})` : best?.home.address}
+                label="Most room over asking"
+                value={bestOffer?.offer != null ? money(Math.max(0, bestOffer.offer - bestOffer.home.price)) : "—"}
+                sub={bestOffer?.offer != null ? `${bestOffer.home.address}, asking ${money(bestOffer.home.price)}` : best?.home.address}
               />
             </div>
 
@@ -1909,7 +1911,7 @@ export default function MarketAnalysisPage() {
                     <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}
                       className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white">
                       <option value="cashFlow">Sort: profit per year</option>
-                      <option value="maxOffer">Sort: max offer vs asking</option>
+                      <option value="maxOffer">Sort: room over asking</option>
                       <option value="cashOnCash">Sort: cash-on-cash</option>
                       <option value="capRate">Sort: cap rate</option>
                       <option value="price">Sort: lowest price</option>
@@ -1935,7 +1937,7 @@ export default function MarketAnalysisPage() {
                   <div className="hidden sm:grid grid-cols-[minmax(0,2.2fr)_repeat(3,minmax(0,1fr))_auto] gap-3 px-3 pb-2 text-xs font-medium text-slate-500">
                     <span>Home</span>
                     <span className="text-right">Asking</span>
-                    <span className="text-right" title="The highest price where this house still clears every goal you set">Max offer</span>
+                    <span className="text-right" title="What to offer: the asking price when the deal already works there, otherwise the highest price that still clears every goal you set">What to offer</span>
                     <span className="text-right" title="What's left after every payment — mortgage, equity line and running costs">Profit per year</span>
                     <span className="w-4" />
                   </div>
@@ -1980,10 +1982,19 @@ export default function MarketAnalysisPage() {
                                 <p className="text-[11px] text-slate-400 sm:hidden">Max offer</p>
                                 {offer === null ? (
                                   <span className="text-slate-400">No price works</span>
+                                ) : offer >= home.price ? (
+                                  // The ceiling sits above the asking price, so the
+                                  // offer to make is the asking price. Printing the
+                                  // ceiling here reads as "pay $455,000 for a
+                                  // $270,000 house", which is nobody's advice.
+                                  <>
+                                    <p className="font-semibold whitespace-nowrap text-emerald-700">{money(home.price)}</p>
+                                    <p className="text-xs text-slate-500">works at asking · {money(offer - home.price)} to spare</p>
+                                  </>
                                 ) : (
                                   <>
-                                    <p className={`font-semibold whitespace-nowrap ${offer >= home.price ? "text-emerald-700" : "text-slate-900"}`}>{money(offer)}</p>
-                                    <p className="text-xs text-slate-500">{offer >= home.price ? "at or above asking" : `${money(home.price - offer)} under`}</p>
+                                    <p className="font-semibold whitespace-nowrap text-slate-900">{money(offer)}</p>
+                                    <p className="text-xs text-slate-500">{money(home.price - offer)} under asking</p>
                                   </>
                                 )}
                               </div>
