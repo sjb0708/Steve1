@@ -1,0 +1,19 @@
+{
+  "name": "BDG Cleaning Management",
+  "short_name": "BDG Cleaning",
+  "description": "Private cleaning management for Bailey Development Group vacation rental properties.",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#1e3a8a",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

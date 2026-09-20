@@ -1,0 +1,634 @@
+"use client"
+import { useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
+import { useAuth } from "@/components/layout/Providers"
+import { Header } from "@/components/layout/Header"
+import { Card } from "@/components/ui/Card"
+import { Badge } from "@/components/ui/Badge"
+import { Button } from "@/components/ui/Button"
+import { Avatar } from "@/components/ui/Avatar"
+import { Spinner } from "@/components/ui/Spinner"
+import { Modal } from "@/components/ui/Modal"
+import { Select } from "@/components/ui/Select"
+import { Input } from "@/components/ui/Input"
+import { formatDateTime, formatDateShort, formatTime, STATUS_COLORS, STATUS_LABELS } from "@/lib/utils"
+import type { Job, User, Property } from "@/types"
+import {
+  Calendar, Clock, MapPin, Search, Plus, Building2,
+  AlertCircle, ChevronRight,
+} from "lucide-react"
+import Link from "next/link"
+import { motion } from "framer-motion"
+
+type StatusFilter = "ALL" | "UNASSIGNED" | "PENDING_ACCEPTANCE" | "ASSIGNED" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "ARCHIVED"
+
+// "Archived" isn't a status — it's a separate shelf fetched from the server,
+// so picking it swaps the whole list rather than filtering the current one.
+const STATUS_FILTERS: { label: string; value: StatusFilter }[] = [
+  { label: "All", value: "ALL" },
+  { label: "Needs Cleaner", value: "UNASSIGNED" },
+  { label: "Awaiting Confirmation", value: "PENDING_ACCEPTANCE" },
+  { label: "Assigned", value: "ASSIGNED" },
+  { label: "In Progress", value: "IN_PROGRESS" },
+  { label: "Completed", value: "COMPLETED" },
+  { label: "Cancelled", value: "CANCELLED" },
+  { label: "Archived", value: "ARCHIVED" },
+]
+
+const stagger = { visible: { transition: { staggerChildren: 0.06 } } }
+const fadeUp = { hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }
+
+// ─── Create Job Modal ─────────────────────────────────────────────────────────
+
+interface CreateJobModalProps {
+  open: boolean
+  onClose: () => void
+  onCreated: () => void
+}
+
+function CreateJobModal({ open, onClose, onCreated }: CreateJobModalProps) {
+  const [cleaners, setCleaners] = useState<User[]>([])
+  const [properties, setProperties] = useState<Property[]>([])
+  const [propertyId, setPropertyId] = useState("")
+  const [cleanerId, setCleanerId] = useState("")
+  const [scheduledDate, setScheduledDate] = useState("")
+  const [notes, setNotes] = useState("")
+  const [silent, setSilent] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    if (!open) return
+    Promise.all([
+      fetch("/api/users?role=CLEANER&approved=true").then((r) => r.json()),
+      fetch("/api/properties").then((r) => r.json()),
+    ]).then(([ud, pd]) => {
+      setCleaners(ud.users ?? ud)
+      setProperties(pd.properties ?? pd)
+    }).catch(() => {})
+  }, [open])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError("")
+    if (!propertyId || !scheduledDate) {
+      setError("Please select a property and scheduled date.")
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          propertyId,
+          scheduledDate,
+          cleanerId: cleanerId || undefined,
+          notes: notes || undefined,
+          silent: silent || undefined,
+        }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setError(d.error ?? "Failed to create job.")
+        return
+      }
+      onCreated()
+      onClose()
+    } catch {
+      setError("Something went wrong.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Create Job" description="Schedule a new cleaning job">
+      <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <Select
+          label="Property"
+          placeholder="Select a property..."
+          value={propertyId}
+          onChange={(e) => setPropertyId(e.target.value)}
+          options={properties.map((p) => ({ value: p.id, label: p.name }))}
+        />
+        <Input
+          label="Scheduled Date & Time"
+          type="datetime-local"
+          value={scheduledDate}
+          onChange={(e) => setScheduledDate(e.target.value)}
+          required
+        />
+        <Select
+          label="Assign Cleaner (optional)"
+          placeholder="Select a cleaner..."
+          value={cleanerId}
+          onChange={(e) => setCleanerId(e.target.value)}
+          options={cleaners.map((c) => ({ value: c.id, label: c.name }))}
+        />
+        {cleanerId && (
+          <label className="flex items-start gap-2.5 p-3 bg-slate-50 border border-slate-200 rounded-xl cursor-pointer">
+            <input
+              type="checkbox"
+              checked={silent}
+              onChange={(e) => setSilent(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-blue-600"
+            />
+            <span className="text-sm text-slate-700">
+              Don&apos;t notify the cleaner — adds the job quietly as already accepted. No email, text, or accept request.
+            </span>
+          </label>
+        )}
+        <Input
+          label="Notes (optional)"
+          placeholder="Special instructions..."
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+        />
+        {error && (
+          <p className="text-sm text-red-600 flex items-center gap-1.5">
+            <AlertCircle className="w-4 h-4" /> {error}
+          </p>
+        )}
+        <div className="flex gap-3 pt-2">
+          <Button type="button" variant="outline" className="flex-1" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" className="flex-1" disabled={submitting}>
+            {submitting ? <Spinner size="sm" /> : "Create Job"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  )
+}
+
+// ─── Admin jobs list ──────────────────────────────────────────────────────────
+
+function AdminJobsView() {
+  const searchParams = useSearchParams()
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [allProperties, setAllProperties] = useState<Property[]>([])
+  const [loading, setLoading] = useState(true)
+
+  // Pre-filter by status from URL (e.g. from a dashboard stat card link);
+  // the filter pills below take over as the source of truth after that
+  const statusParam = searchParams.get("status") as StatusFilter | null
+  const validStatusParam = statusParam && STATUS_FILTERS.some((f) => f.value === statusParam) ? statusParam : "ALL"
+  const [filter, setFilter] = useState<StatusFilter>(validStatusParam)
+  const [search, setSearch] = useState("")
+  const [showCreate, setShowCreate] = useState(false)
+
+  // Pre-filter by propertyId from URL (e.g. from property detail page);
+  // the dropdown below takes over as the source of truth after that
+  const propertyIdParam = searchParams.get("propertyId")
+  const [propertyFilter, setPropertyFilter] = useState(propertyIdParam || "ALL")
+  const [platformFilter, setPlatformFilter] = useState<"ALL" | "airbnb" | "vrbo">("ALL")
+
+  const [archiving, setArchiving] = useState(false)
+  const [archiveMsg, setArchiveMsg] = useState("")
+
+  async function loadJobs(archived = false) {
+    try {
+      const res = await fetch(archived ? "/api/jobs?archived=1" : "/api/jobs")
+      if (res.ok) {
+        const data = await res.json()
+        setJobs(data.jobs ?? data)
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleArchivePast() {
+    setArchiving(true)
+    setArchiveMsg("")
+    try {
+      const res = await fetch("/api/jobs/archive", { method: "POST" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setArchiveMsg(data.error ?? "Couldn't archive.")
+      } else {
+        setArchiveMsg(
+          data.count === 0
+            ? "Nothing to archive — no past cleanings are still open."
+            : `Archived ${data.count} past cleaning${data.count === 1 ? "" : "s"}.`
+        )
+        await loadJobs(filter === "ARCHIVED")
+      }
+    } catch {
+      setArchiveMsg("Couldn't archive. Please try again.")
+    } finally {
+      setArchiving(false)
+    }
+  }
+
+  useEffect(() => {
+    loadJobs(filter === "ARCHIVED")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter === "ARCHIVED"])
+
+  useEffect(() => {
+    fetch("/api/properties")
+      .then((r) => r.json())
+      .then((d) => setAllProperties(d.properties ?? []))
+      .catch(() => {})
+  }, [])
+
+  const filtered = jobs.filter((j) => {
+    if (propertyFilter !== "ALL" && j.property?.id !== propertyFilter) return false
+    if (platformFilter !== "ALL" && j.booking?.platform?.toLowerCase() !== platformFilter) return false
+    // ARCHIVED is handled by the server query, not by status matching
+    if (filter !== "ALL" && filter !== "ARCHIVED" && j.status !== filter) return false
+    if (search) {
+      const q = search.toLowerCase()
+      const name = j.property?.name?.toLowerCase() ?? ""
+      const cleaner = j.cleaner?.name?.toLowerCase() ?? ""
+      if (!name.includes(q) && !cleaner.includes(q)) return false
+    }
+    return true
+  })
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Spinner size="lg" />
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <Header
+        title="Jobs"
+        subtitle={`${filtered.length} job${filtered.length !== 1 ? "s" : ""}`}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={handleArchivePast} disabled={archiving}>
+              {archiving ? "Archiving…" : "Archive Past Jobs"}
+            </Button>
+            <Button size="sm" onClick={() => setShowCreate(true)}>
+              <Plus className="w-4 h-4" /> Create Job
+            </Button>
+          </div>
+        }
+      />
+
+      <div className="p-6 max-w-5xl space-y-5">
+        {archiveMsg && (
+          <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700">
+            <span>{archiveMsg}</span>
+            <button onClick={() => setArchiveMsg("")} className="text-slate-400 hover:text-slate-600 text-xs font-medium">
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {filter === "ARCHIVED" && (
+          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-600">
+            Past cleanings that were never finished or cancelled. They&apos;re kept for the
+            record and left off the working board — nothing has been deleted.
+          </div>
+        )}
+        {/* Property / platform filter banner */}
+        {(propertyFilter !== "ALL" || platformFilter !== "ALL") && (
+          <div className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-xl text-sm">
+            <span className="text-blue-700 font-medium flex items-center gap-2">
+              <Building2 className="w-4 h-4" />
+              {propertyFilter !== "ALL" && (allProperties.find((p) => p.id === propertyFilter)?.name ?? "Filtered")}
+              {propertyFilter !== "ALL" && platformFilter !== "ALL" && " · "}
+              {platformFilter !== "ALL" && (platformFilter === "airbnb" ? "Airbnb" : "VRBO")}
+            </span>
+            <button
+              onClick={() => { setPropertyFilter("ALL"); setPlatformFilter("ALL") }}
+              className="text-blue-600 hover:text-blue-700 font-medium text-xs"
+            >
+              Clear filters →
+            </button>
+          </div>
+        )}
+        {/* Filters */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by property or cleaner..."
+              className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-slate-300 transition-all"
+            />
+          </div>
+          <Select
+            value={propertyFilter}
+            onChange={(e) => setPropertyFilter(e.target.value)}
+            className="sm:w-52"
+            options={[
+              { value: "ALL", label: "All Properties" },
+              ...allProperties.map((p) => ({ value: p.id, label: p.name })),
+            ]}
+          />
+          <Select
+            value={platformFilter}
+            onChange={(e) => setPlatformFilter(e.target.value as "ALL" | "airbnb" | "vrbo")}
+            className="sm:w-40"
+            options={[
+              { value: "ALL", label: "All Platforms" },
+              { value: "airbnb", label: "Airbnb" },
+              { value: "vrbo", label: "VRBO" },
+            ]}
+          />
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFilter(f.value)}
+              className={`px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                filter === f.value
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-white text-slate-600 border border-slate-200 hover:border-blue-300"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Job list */}
+        <motion.div initial="hidden" animate="visible" variants={stagger} className="space-y-3">
+          {filtered.map((job) => (
+            <motion.div key={job.id} variants={fadeUp}>
+              <Link href={`/jobs/${job.id}`}>
+                <Card hover padding="none">
+                  <div className="flex items-center gap-4 p-5">
+                    {/* Status bar */}
+                    <div
+                      className={`w-1.5 h-16 rounded-full flex-shrink-0 ${
+                        job.status === "COMPLETED"
+                          ? "bg-emerald-400"
+                          : job.status === "IN_PROGRESS"
+                          ? "bg-amber-400"
+                          : job.status === "ASSIGNED"
+                          ? "bg-blue-400"
+                          : job.status === "UNASSIGNED"
+                          ? "bg-slate-300"
+                          : "bg-red-300"
+                      }`}
+                    />
+
+                    {/* Property info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start gap-3 mb-2">
+                        <div className="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                          <Building2 className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-slate-900 truncate">
+                            {job.property?.name ?? "Property"}
+                          </p>
+                          {job.property && (
+                            <p className="text-xs text-slate-500 flex items-center gap-1">
+                              <MapPin className="w-3 h-3" />
+                              {job.property.city}, {job.property.state}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3.5 h-3.5" />
+                          {formatDateTime(job.scheduledDate)}
+                        </span>
+                        {job.booking && (
+                          <span className={`px-2 py-0.5 rounded-full font-medium ${
+                            job.booking.platform?.toLowerCase() === "airbnb"
+                              ? "bg-rose-100 text-rose-700"
+                              : job.booking.platform?.toLowerCase() === "vrbo"
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-slate-100 text-slate-600"
+                          }`}>
+                            {job.booking.platform?.toLowerCase() === "airbnb" ? "Airbnb" : job.booking.platform?.toLowerCase() === "vrbo" ? "VRBO" : job.booking.platform}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Cleaner */}
+                    <div className="hidden sm:flex flex-col items-center gap-1 flex-shrink-0">
+                      {job.cleaner ? (
+                        <>
+                          <Avatar name={job.cleaner.name} size="sm" />
+                          <p className="text-xs text-slate-600 font-medium max-w-[80px] truncate text-center">
+                            {job.cleaner.name.split(" ")[0]}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+                            <span className="text-slate-400 text-xs font-bold">?</span>
+                          </div>
+                          <p className="text-xs text-slate-400 font-medium">Unassigned</p>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Status badge */}
+                    <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                      <span className={`px-2.5 py-1 text-xs font-semibold rounded-full ${STATUS_COLORS[job.status]}`}>
+                        {STATUS_LABELS[job.status]}
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-slate-300" />
+                    </div>
+                  </div>
+                </Card>
+              </Link>
+            </motion.div>
+          ))}
+
+          {filtered.length === 0 && (
+            <div className="text-center py-16 text-slate-500">
+              <Building2 className="w-12 h-12 mx-auto mb-3 text-slate-200" />
+              <p className="font-medium">No jobs found</p>
+              <p className="text-sm mt-1">Try adjusting your filters</p>
+            </div>
+          )}
+        </motion.div>
+      </div>
+
+      <CreateJobModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreated={loadJobs}
+      />
+    </>
+  )
+}
+
+// ─── Cleaner jobs list ────────────────────────────────────────────────────────
+
+function CleanerJobsView() {
+  const [jobs, setJobs] = useState<Job[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<StatusFilter>("ALL")
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const res = await fetch("/api/jobs")
+        if (res.ok) {
+          const data = await res.json()
+          setJobs(data.jobs ?? data)
+        }
+      } catch {
+        // silently fail
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Spinner size="lg" />
+      </div>
+    )
+  }
+
+  const filtered = jobs.filter((j) => filter === "ALL" || j.status === filter)
+
+  return (
+    <>
+      <Header title="My Jobs" subtitle={`${filtered.length} job${filtered.length !== 1 ? "s" : ""}`} />
+
+      <div className="p-4 max-w-lg mx-auto space-y-4">
+        {/* Filter tabs */}
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {[
+            { label: "All", value: "ALL" as StatusFilter },
+            { label: "Action Required", value: "PENDING_ACCEPTANCE" as StatusFilter },
+            { label: "Assigned", value: "ASSIGNED" as StatusFilter },
+            { label: "In Progress", value: "IN_PROGRESS" as StatusFilter },
+            { label: "Completed", value: "COMPLETED" as StatusFilter },
+          ].map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFilter(f.value)}
+              className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all min-h-[40px] ${
+                filter === f.value
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-white text-slate-600 border border-slate-200"
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Job cards */}
+        <motion.div initial="hidden" animate="visible" variants={stagger} className="space-y-3">
+          {filtered.map((job) => {
+            const items = job.checklistItems ?? []
+            const done = items.filter((c) => c.completed).length
+            const pct = items.length ? Math.round((done / items.length) * 100) : 0
+
+            return (
+              <motion.div key={job.id} variants={fadeUp}>
+                <Link href={`/jobs/${job.id}`}>
+                  <div className="bg-white rounded-2xl border border-slate-100 shadow-sm active:scale-[0.99] transition-transform">
+                    <div className="p-4">
+                      {job.status === "PENDING_ACCEPTANCE" && (
+                        <div className="mb-3 flex items-center gap-2 bg-purple-50 border border-purple-200 rounded-xl px-3 py-2">
+                          <AlertCircle className="w-4 h-4 text-purple-600 flex-shrink-0" />
+                          <span className="text-xs font-semibold text-purple-700">Action required — tap to accept or decline</span>
+                        </div>
+                      )}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-slate-900 text-base truncate">
+                            {job.property?.name ?? "Property"}
+                          </p>
+                          {job.property && (
+                            <p className="text-sm text-slate-500 mt-0.5">
+                              {job.property.city}, {job.property.state}
+                            </p>
+                          )}
+                        </div>
+                        <span className={`px-2.5 py-1 text-xs font-semibold rounded-full flex-shrink-0 ${STATUS_COLORS[job.status]}`}>
+                          {STATUS_LABELS[job.status]}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 flex items-center gap-4 text-sm text-slate-600">
+                        <span className="flex items-center gap-1.5">
+                          <Calendar className="w-4 h-4 text-slate-400" />
+                          <span className="font-medium">{formatDateShort(job.scheduledDate)}</span>
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <Clock className="w-4 h-4 text-slate-400" />
+                          {formatTime(job.scheduledDate)}
+                        </span>
+                      </div>
+
+                      {items.length > 0 && (
+                        <div className="mt-3">
+                          <div className="flex justify-between text-xs text-slate-500 mb-1">
+                            <span>Checklist</span>
+                            <span className="font-semibold text-slate-700">{done}/{items.length}</span>
+                          </div>
+                          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${pct === 100 ? "bg-emerald-500" : "bg-blue-500"}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="border-t border-slate-50 px-4 py-3 flex justify-end">
+                      <span className="text-sm font-semibold text-blue-600 flex items-center gap-1">
+                        View details <ChevronRight className="w-4 h-4" />
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              </motion.div>
+            )
+          })}
+
+          {filtered.length === 0 && (
+            <div className="text-center py-16 text-slate-500">
+              <Building2 className="w-12 h-12 mx-auto mb-3 text-slate-200" />
+              <p className="font-medium">No jobs here</p>
+              <p className="text-sm mt-1">Check back later for new assignments.</p>
+            </div>
+          )}
+        </motion.div>
+      </div>
+    </>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function JobsPage() {
+  const { user, loading: authLoading } = useAuth()
+  const isAdmin = user?.role === "ADMIN"
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Spinner size="lg" />
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen">
+      {isAdmin ? <AdminJobsView /> : <CleanerJobsView />}
+    </div>
+  )
+}

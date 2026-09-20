@@ -1,0 +1,448 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  name               String
+  // Login is by username — short and easy to type. Email is kept for
+  // notifications and password recovery, not for signing in.
+  username           String?   @unique
+  email              String?   @unique
+  password           String
+  role               String    @default("CLEANER")
+  phone              String?
+  carrier            String?
+  avatarUrl          String?
+  bio                String?
+  location           String?
+  approved           Boolean   @default(false)
+  emailNotifications Boolean   @default(true)
+  smsNotifications   Boolean   @default(true)
+  appNotifications   Boolean   @default(true)
+  notificationChannel String   @default("EMAIL")
+  paymentMethod      String?
+  paymentDetails     String?
+  inviteToken        String?   @unique
+  inviteExpiry       DateTime?
+  resetToken         String?   @unique
+  resetExpiry        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  properties        Property[]
+  jobsAsAdmin       Job[]          @relation("AdminJobs")
+  jobsAsCleaner     Job[]          @relation("CleanerJobs")
+  notifications     Notification[]
+  paymentsReceived  Payment[]      @relation("CleanerPayments")
+  issueReports      IssueReport[]
+  supplyRequests    SupplyRequest[]
+}
+
+// App-wide switches an admin can flip from Settings without a redeploy.
+// Currently just the cleaner-notification pause, but keyed generically so
+// the next one doesn't need another table.
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+model Property {
+  id               String    @id @default(cuid())
+  hostId           String
+  name             String
+  address          String
+  city             String
+  state            String
+  bedrooms         Int
+  bathrooms        Float
+  description      String?
+  imageUrl         String?
+  airbnbIcalUrl    String?
+  vrboIcalUrl      String?
+  cleaningDuration     Int
+  cleaningFee          Float     @default(0)
+  checkoutTime         String    @default("11:00 AM")
+  doorCode             String?
+  supplyClosetCode     String?
+  wifiNetwork          String?
+  wifiPassword         String?
+  accessInstructions   String?
+  // Texted to the assigned cleaner mid-afternoon on cleaning day — the
+  // "before you leave" list (lock the owner's closet, set the thermostat,
+  // where the key goes). Blank means no closing text is sent for this
+  // property, rather than sending a useless generic one.
+  closingInstructions  String?
+  // What the AI risk assessment reviews. The Airbnb text is pulled from the
+  // public listing page; VRBO blocks automated fetches, so that one is pasted.
+  airbnbListingText     String?
+  airbnbListingPulledAt DateTime?
+  vrboListingText       String?
+  // Rental agreement, license/permit numbers, insurance, HOA rules — anything
+  // that isn't on either listing but should be weighed.
+  otherPolicies         String?
+  lastSyncedAt         DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  host              User               @relation(fields: [hostId], references: [id])
+  jobs              Job[]
+  bookings          Booking[]
+  checklistTemplate ChecklistTemplate?
+  payments          Payment[]
+  issueReports      IssueReport[]
+  supplyRequests    SupplyRequest[]
+  supplyItems       PropertySupplyItem[]
+  riskAssessments   RiskAssessment[]
+  marketComps       MarketComp[]
+}
+
+// ── Price Evaluation market data ─────────────────────────────────────────
+// Collected daily from public Airbnb pages: prices for comparable homes on
+// sampled upcoming stays, plus a snapshot of each home's calendar. Occupancy
+// is inferred from nights that flip from open to blocked between snapshots.
+
+// One row per Airbnb listing we track, ours included. id is the Airbnb
+// listing number.
+model MarketListing {
+  id         String   @id
+  name       String?
+  bedrooms   Int?
+  beds       Int?
+  baths      Float?
+  rating     Float?
+  reviews    Int?
+  guests     Int?
+  pool       Boolean?
+  latitude   Float?
+  longitude  Float?
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  comps     MarketComp[]
+  quotes    MarketQuote[]
+}
+
+// Which listings compete with which of our properties
+model MarketComp {
+  propertyId    String
+  listingId     String
+  isOwn         Boolean  @default(false)
+  distanceMiles Float
+  firstSeenAt   DateTime @default(now())
+  lastSeenAt    DateTime @default(now())
+
+  property Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  listing  MarketListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@id([propertyId, listingId])
+}
+
+// Guest-paid total (incl. cleaning and Airbnb fees, before taxes) for a
+// sampled stay, as shown in search results on the day it was captured.
+model MarketQuote {
+  id         String @id @default(cuid())
+  listingId  String
+  checkin    String
+  nights     Int
+  total      Float
+  nightly    Float
+  capturedOn String
+
+  listing MarketListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([listingId, checkin, nights, capturedOn])
+  @@index([capturedOn])
+}
+
+// availability: { "2026-10-01": true, ... } from capturedOn forward
+model MarketCalendarSnapshot {
+  listingId    String
+  capturedOn   String
+  // Blank for Price Evaluation comps; set for Market Analysis comps so each
+  // market gets its own occupancy
+  marketId     String @default("")
+  availability Json
+
+  // No link to MarketListing: Price Evaluation comps live there, but Market
+  // Analysis tracks its own competitors in other markets.
+  @@id([listingId, capturedOn])
+}
+
+// ── Market Analysis (homes for sale) ─────────────────────────────────────
+// Active listings pulled daily from Redfin's search download, enriched with
+// Marion County Property Appraiser records.
+
+model ForSaleListing {
+  // Redfin home id (from the listing URL)
+  id             String    @id
+  // Which saved market (Ocala, Pigeon Forge, …) this was found in
+  marketId       String    @default("")
+  url            String
+  address        String
+  city           String?
+  zip            String?
+  propertyType   String?
+  price          Int
+  previousPrice  Int?
+  priceChangedOn String?
+  beds           Float?
+  baths          Float?
+  sqft           Int?
+  lotSqft        Int?
+  yearBuilt      Int?
+  daysOnMarket   Int?
+  hoaMonthly     Int?
+  status         String?
+  source         String?
+  mlsNumber      String?
+  latitude       Float
+  longitude      Float
+  firstSeenOn    String
+  lastSeenOn     String
+  county         Json?
+  countyError    String?
+  countyFetchedAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([lastSeenOn])
+}
+
+// Airbnb guest-paid nightly prices sampled across the search area by bedroom
+// count; used to estimate what a home for sale would earn.
+model StrRateSample {
+  id         String @id @default(cuid())
+  marketId   String @default("")
+  // "current" = the near-term weekly sampling across bedroom tiers;
+  // "seasonal" = one stay a month for a year, same size home each time, so
+  // months can be compared with each other
+  kind       String @default("current")
+  listingId  String
+  bedrooms   Int
+  latitude   Float
+  longitude  Float
+  checkin    String
+  nights     Int
+  nightly    Float
+  capturedOn String
+
+  @@unique([listingId, checkin, nights, capturedOn])
+  @@index([capturedOn])
+}
+
+model DealScanRun {
+  id         String    @id @default(cuid())
+  // RUNNING | COMPLETE | FAILED
+  status     String    @default("RUNNING")
+  stats      Json?
+  error      String?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+}
+
+model MarketRun {
+  id         String    @id @default(cuid())
+  // RUNNING | COMPLETE | FAILED
+  status     String    @default("RUNNING")
+  stats      Json?
+  error      String?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+}
+
+model RiskAssessment {
+  id          String    @id @default(cuid())
+  propertyId  String
+  // RUNNING | COMPLETE | FAILED
+  status      String    @default("RUNNING")
+  overallRisk String?
+  score       Int?
+  result      Json?
+  error       String?
+  model       String?
+  costUsd     Float?
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+
+  @@index([propertyId, createdAt])
+}
+
+// The fixed list a cleaner picks from in Request Supplies — set per property
+// so BigHouse 2040 and Small House 2725 can stock (and thus request) different
+// things, instead of every property sharing one generic hardcoded list.
+model PropertySupplyItem {
+  id         String @id @default(cuid())
+  propertyId String
+  name       String
+  order      Int    @default(0)
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+}
+
+model Booking {
+  id         String   @id @default(cuid())
+  propertyId String
+  platform   String
+  externalId String?
+  guestName  String?
+  checkIn    DateTime
+  checkOut   DateTime
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  jobs     Job[]
+
+  @@unique([propertyId, externalId])
+}
+
+model Job {
+  id                String    @id @default(cuid())
+  propertyId        String
+  hostId            String
+  cleanerId         String?
+  bookingId         String?
+  status            String    @default("UNASSIGNED")
+  scheduledDate     DateTime
+  duration          Int
+  notes             String?
+  completedAt       DateTime?
+  unassignedAt      DateTime?
+  // Set once a cleaning's date has passed without it being finished or
+  // cancelled. Keeps the board showing live work instead of a growing tail
+  // of turnovers nobody is going to staff any more.
+  archivedAt        DateTime?
+  actionToken       String?   @unique
+  actionTokenExpiry DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  property       Property        @relation(fields: [propertyId], references: [id])
+  host           User            @relation("AdminJobs", fields: [hostId], references: [id])
+  cleaner        User?           @relation("CleanerJobs", fields: [cleanerId], references: [id])
+  booking        Booking?        @relation(fields: [bookingId], references: [id])
+  checklistItems  ChecklistItem[]
+  notifications   Notification[]
+  payment         Payment?
+  issueReports    IssueReport[]
+  supplyRequests  SupplyRequest[]
+}
+
+model ChecklistTemplate {
+  id         String                  @id @default(cuid())
+  propertyId String                  @unique
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+
+  property Property                @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  items    ChecklistTemplateItem[]
+}
+
+model ChecklistTemplateItem {
+  id         String  @id @default(cuid())
+  templateId String
+  label      String
+  room       String?
+  order      Int     @default(0)
+
+  template ChecklistTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model ChecklistItem {
+  id        String  @id @default(cuid())
+  jobId     String
+  label     String
+  completed Boolean @default(false)
+  room      String?
+  order     Int     @default(0)
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  jobId     String?
+  type      String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job  Job?  @relation(fields: [jobId], references: [id], onDelete: SetNull)
+}
+
+model IssueReport {
+  id           String   @id @default(cuid())
+  jobId        String
+  propertyId   String
+  reportedById String
+  type         String   // DAMAGE, BROKEN_ITEM, STAIN, PEST, OTHER
+  severity     String   @default("MEDIUM") // LOW, MEDIUM, HIGH
+  description  String
+  status       String   @default("OPEN") // OPEN, REVIEWED, RESOLVED
+  // Airbnb's Resolution Center / AirCover claim fields — estimated repair or
+  // replacement cost, and the cleaner's attestation that photos are original
+  // camera captures (Airbnb bans AI-generated/edited images in claims as of
+  // its April 2026 policy update).
+  estimatedCost           Float?
+  photosConfirmedOriginal Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  job        Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  property   Property      @relation(fields: [propertyId], references: [id])
+  reportedBy User          @relation(fields: [reportedById], references: [id])
+  photos     IssuePhoto[]
+}
+
+model IssuePhoto {
+  id            String      @id @default(cuid())
+  issueReportId String
+  url           String
+  createdAt     DateTime    @default(now())
+
+  issueReport IssueReport @relation(fields: [issueReportId], references: [id], onDelete: Cascade)
+}
+
+model SupplyRequest {
+  id            String   @id @default(cuid())
+  jobId         String
+  propertyId    String
+  requestedById String
+  items         String   // JSON array of supply names
+  notes         String?
+  status        String   @default("PENDING") // PENDING, ORDERED, DELIVERED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  job         Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  property    Property @relation(fields: [propertyId], references: [id])
+  requestedBy User     @relation(fields: [requestedById], references: [id])
+}
+
+model Payment {
+  id          String    @id @default(cuid())
+  jobId       String    @unique
+  cleanerId   String
+  propertyId  String
+  amount      Float
+  status      String    @default("UNPAID")
+  paidAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  job      Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  cleaner  User     @relation("CleanerPayments", fields: [cleanerId], references: [id])
+  property Property @relation(fields: [propertyId], references: [id])
+}
