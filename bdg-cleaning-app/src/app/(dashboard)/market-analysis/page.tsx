@@ -48,8 +48,10 @@ type Data = {
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
+// Deliberately not green: green on this page means "clears your goals", and
+// a green confidence badge on a losing house reads as a recommendation.
 const CONFIDENCE_STYLE: Record<Confidence, string> = {
-  strong: "bg-emerald-100 text-emerald-800",
+  strong: "bg-slate-200 text-slate-700",
   fair: "bg-blue-100 text-blue-800",
   weak: "bg-amber-100 text-amber-800",
   none: "bg-slate-100 text-slate-600",
@@ -1338,7 +1340,7 @@ export default function MarketAnalysisPage() {
 
   const mapHomes: MapHome[] = useMemo(
     () =>
-      results.map(({ home, m }) => ({
+      (onlyGoals ? results.filter((r) => r.m.meetsGoals) : results).map(({ home, m }) => ({
         id: home.id,
         address: home.address,
         latitude: home.latitude,
@@ -1347,7 +1349,7 @@ export default function MarketAnalysisPage() {
         cashFlow: m.cashFlow,
         meetsGoals: m.meetsGoals,
       })),
-    [results],
+    [results, onlyGoals],
   )
 
   if (loading || !data || !draft || !market) {
@@ -1784,7 +1786,10 @@ export default function MarketAnalysisPage() {
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: "#1baf7a" }} />Meets your goals</span>
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: "#64748b" }} />Doesn&apos;t</span>
                 <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full" style={{ background: "#eb6834" }} />Selected</span>
-                <span>Click a dot to open its numbers. Save after moving the area, then Update to pull listings there.</span>
+                <span>
+                  Every home in your buy box is here — most won&apos;t clear your goals at the asking price, so the big
+                  green ones are the ones that do. Tick &quot;Only homes that meet my goals&quot; to hide the rest.
+                </span>
               </div>
             </div>
 

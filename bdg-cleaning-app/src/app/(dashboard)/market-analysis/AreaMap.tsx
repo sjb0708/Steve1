@@ -100,12 +100,15 @@ export default function AreaMap({ center, radiusMiles, homes, selectedId, onSele
             <CircleMarker
               key={h.id}
               center={[h.latitude, h.longitude]}
-              radius={selected ? 9 : 6}
+              radius={selected ? 10 : h.meetsGoals ? 9 : 5}
               pathOptions={{
                 color: "#fff",
-                weight: 2,
+                weight: h.meetsGoals || selected ? 3 : 1.5,
+                // One green dot among seventy grey ones has to be found at a
+                // glance, so the ones that clear the goals are drawn bigger
+                // and the rest are pushed back.
+                fillOpacity: h.meetsGoals || selected ? 1 : 0.55,
                 fillColor: selected ? "#eb6834" : h.meetsGoals ? "#1baf7a" : "#64748b",
-                fillOpacity: 1,
               }}
               eventHandlers={{ click: () => onSelectHome(selected ? null : h.id) }}
             >
