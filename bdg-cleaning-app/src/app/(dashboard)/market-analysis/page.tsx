@@ -705,11 +705,24 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   )
 }
 
-function Line({ label, value, strong, negative }: { label: string; value: string; strong?: boolean; negative?: boolean }) {
+// `from` is the working: where the figure came from and how it was arrived
+// at. Every line in the breakdown carries one, because a number you can't
+// trace is a number you have to take on faith.
+function Line({ label, value, strong, negative, from, show = true }: {
+  label: string
+  value: string
+  strong?: boolean
+  negative?: boolean
+  from?: string
+  show?: boolean
+}) {
   return (
-    <div className={`flex justify-between gap-3 text-sm py-1 ${strong ? "font-semibold text-slate-900 border-t border-slate-100 mt-1 pt-2" : "text-slate-600"}`}>
-      <span>{label}</span>
-      <span className={negative ? "text-red-600" : strong ? "text-slate-900" : "text-slate-800"}>{value}</span>
+    <div className={`py-1 ${strong ? "border-t border-slate-100 mt-1 pt-2" : ""}`}>
+      <div className={`flex justify-between gap-3 text-sm ${strong ? "font-semibold text-slate-900" : "text-slate-600"}`}>
+        <span>{label}</span>
+        <span className={negative ? "text-red-600" : strong ? "text-slate-900" : "text-slate-800"}>{value}</span>
+      </div>
+      {from && show && <p className="text-[11px] leading-snug text-slate-400 mt-0.5 pr-16">{from}</p>}
     </div>
   )
 }
@@ -784,25 +797,36 @@ function CountyPanel({ home, market, onRefresh, refreshing }: { home: ForSaleHom
   )
 }
 
-function ProjectionPanel({ p, inputs }: { p: Projection | null; inputs: MarketAnalysisInputs }) {
+function ProjectionPanel({ p, inputs, showWorking = true }: { p: Projection | null; inputs: MarketAnalysisInputs; showWorking?: boolean }) {
   if (!p) return null
+  const h = inputs.hold
   const shown = p.years.filter((y, i) => i < 3 || y.year === p.years.length)
   return (
     <div>
       <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
         Over {p.years.length} years, after tax
       </p>
-      <Line label="Cash flow, all years" value={money(p.totalCashFlow)} />
-      <Line label="After tax" value={money(p.totalAfterTaxCashFlow)} />
-      <Line label="Equity at sale" value={money(p.equityAtExit)} />
-      <Line label="Depreciation recapture tax" value={money(-p.recaptureTax)} />
-      <Line label="Capital gains tax" value={money(-p.capitalGainsTax)} />
-      <Line label="Proceeds after costs, payoff & tax" value={money(p.saleProceeds)} />
-      <Line label="Total profit" value={money(p.totalProfit)} strong negative={p.totalProfit < 0} />
+      <Line label="Cash flow, all years" value={money(p.totalCashFlow)} show={showWorking}
+        from={`Every year added up, with rent growing ${h.rentGrowthPct ?? 0}% a year and costs ${h.expenseGrowthPct ?? 0}%. Settings › Fine-tune.`} />
+      <Line label="After tax" value={money(p.totalAfterTaxCashFlow)} show={showWorking}
+        from={`Income tax at ${h.incomeTaxRatePct ?? 0}% on what's left after depreciation. Depreciation is ${money(p.accumulatedDepreciation)} over the hold — the building over 27.5 years, plus furnishings and anything a cost-segregation study reclassifies, with ${h.bonusDepreciationPct ?? 0}% of the short-life part written off in year one. Losses carry forward.`} />
+      <Line label="Equity at sale" value={money(p.equityAtExit)} show={showWorking}
+        from={`The house grown at ${h.appreciationPct ?? 0}% a year, less whatever is still owed on the mortgage.`} />
+      <Line label="Depreciation recapture tax" value={money(-p.recaptureTax)} show={showWorking}
+        from={`${money(p.accumulatedDepreciation)} of deductions taken above are handed back at ${h.depreciationRecaptureRatePct ?? 0}%. Depreciation is a loan from the sale, not a gift.`} />
+      <Line label="Capital gains tax" value={money(-p.capitalGainsTax)} show={showWorking}
+        from={`${h.capitalGainsRatePct ?? 0}% on the ${money(p.gainOnSale)} gain, after recapture takes its share first.`} />
+      <Line label="Proceeds after costs, payoff & tax" value={money(p.saleProceeds)} show={showWorking}
+        from={`Sale price less ${h.sellingCostPct ?? 0}% selling costs, less the mortgage balance, less the equity line drawn, less both taxes above.`} />
+      <Line label="Total profit" value={money(p.totalProfit)} strong negative={p.totalProfit < 0} show={showWorking}
+        from="All after-tax cash flow + sale proceeds − your own cash in. Everything, start to finish." />
       <Line
         label="Annual return on your cash"
         value={p.irr === null ? "No cash in — funded by the line" : pct(p.irr)}
-      />
+        show={showWorking}
+        from={p.irr === null
+          ? "The equity line covers the whole purchase, so none of your own money is in it and there is no return on it to compute."
+          : `The rate that makes every year's cash, plus the sale, worth exactly the ${money(p.cashInvested)} you put in. An IRR.`} />
       <table className="w-full text-xs mt-2">
         <thead>
           <tr className="text-left text-slate-500">
@@ -838,7 +862,7 @@ function DealDetail({ home, inputs, market, samples, occupancy, helocAvailable, 
   inputs: MarketAnalysisInputs
   market: MarketSettings
   samples: StrSample[]
-  occupancy: Parameters<typeof analyzeDeal>[4]
+  occupancy: Parameters<typeof analyzeDeal>[4] & { listings?: number; historyDays?: number }
   helocAvailable: number
   onRefreshCounty: () => void
   refreshing: boolean
@@ -847,6 +871,7 @@ function DealDetail({ home, inputs, market, samples, occupancy, helocAvailable, 
   // panel is what that offer would buy you.
   const [offerPrice, setOfferPrice] = useState<number | null>(null)
   const [showComps, setShowComps] = useState(false)
+  const [showWorking, setShowWorking] = useState(true)
   const price = offerPrice !== null && offerPrice > 0 ? offerPrice : home.price
 
   // The same call the estimate itself makes, so what's listed below is
@@ -871,8 +896,17 @@ function DealDetail({ home, inputs, market, samples, occupancy, helocAvailable, 
   return (
     <div className="grid gap-6 lg:grid-cols-3 p-4 bg-slate-50/60">
       <div>
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Yearly income &amp; costs</p>
-        <Line label={`Nightly rate (${m.nightlySource === "override" ? "your override" : `${m.airbnbComps} nearby Airbnbs`})`} value={money(m.nightly)} />
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Yearly income &amp; costs</p>
+          <button type="button" onClick={() => setShowWorking((v) => !v)}
+            className="text-[11px] text-blue-600 hover:underline whitespace-nowrap">
+            {showWorking ? "Hide the working" : "Show the working"}
+          </button>
+        </div>
+        <Line label={`Nightly rate (${m.nightlySource === "override" ? "your override" : `${m.airbnbComps} nearby Airbnbs`})`} value={money(m.nightly)} show={showWorking}
+          from={m.nightlySource === "override"
+            ? `The rate you typed for ${market.label}, used instead of the comps. Settings › ${market.label}.`
+            : `The middle asking price of ${m.airbnbComps} Airbnbs within ${inputs.revenue.compRadiusMiles ?? 5} miles with the same bedroom count, scraped from Airbnb's own search pages for upcoming dates. Then two deductions: Airbnb's ${inputs.revenue.guestServiceFeePct ?? 0}% guest fee, which never reaches you, and the cleaning fee buried in a 2-night quoted total, re-spread across a ${inputs.revenue.avgStayNights ?? 3}-night stay. Listed below — open any of them.`} />
         {est.comps.length > 0 && m.nightlySource !== "override" && (
           <div className="mb-1">
             <button type="button" onClick={() => setShowComps((v) => !v)}
@@ -919,9 +953,22 @@ function DealDetail({ home, inputs, market, samples, occupancy, helocAvailable, 
             )}
           </div>
         )}
-        <Line label={`Occupancy (${OCCUPANCY_SOURCE[m.occupancySource]})`} value={pct(m.occupancy, 0)} />
-        <Line label="Nights booked" value={Math.round(m.nightsBooked).toString()} />
-        <Line label="Gross revenue" value={money(m.revenue)} strong />
+        <Line label={`Occupancy (${OCCUPANCY_SOURCE[m.occupancySource]})`} value={pct(m.occupancy, 0)} show={showWorking}
+          from={
+            m.occupancySource === "override"
+              ? `The figure you typed for ${market.label}. It beats every measurement. Settings › ${market.label}.`
+              : m.occupancySource === "market"
+                ? `Measured: ${occupancy.listings ?? 0} competing Airbnbs in ${market.label} have their calendars snapshotted every morning. A night that was open in one snapshot and taken in a later one was booked; a run of 21+ unavailable nights is the owner blocking, and counts as neither. ${occupancy.historyDays ?? 0} days of history.`
+                : m.occupancySource === "own"
+                  ? "Measured from your own two houses' booked nights, counted from the date both Airbnb and VRBO had data."
+                  : m.occupancySource === "bookedAhead"
+                    ? `Measured, but conservative: of the next 30 nights across ${occupancy.listings ?? 0} competing Airbnbs here, ${pct(occupancy.bookedAhead, 0)} are already taken. Near dates keep filling in, so a full year lands higher. A measured year needs 30 days of snapshots — this is day ${occupancy.historyDays ?? 0}.`
+                    : "A plain 50% — nobody measured this and you haven't set it. Treat every figure below as a placeholder."
+          } />
+        <Line label="Nights booked" value={Math.round(m.nightsBooked).toString()} show={showWorking}
+          from={`365 × ${pct(m.occupancy, 0)}.`} />
+        <Line label="Gross revenue" value={money(m.revenue)} strong show={showWorking}
+          from={`Nightly rate × nights booked, spread across the year by ${market.label}'s own seasonal shape where there's enough data to know it. What guests pay you, before any cost.`} />
         {m.revenueRange && (
           <p className="text-xs text-slate-500 mb-1">
             If comps&apos; cheaper or pricier rates hold: {money(m.revenueRange.low)} – {money(m.revenueRange.high)}
@@ -933,34 +980,61 @@ function DealDetail({ home, inputs, market, samples, occupancy, helocAvailable, 
         </p>
         {e && (
           <>
-            <Line label="Airbnb host fee" value={money(-e.hostFees)} />
-            <Line label="Cleaning" value={money(-e.cleaning)} />
-            <Line label="Utilities" value={money(-e.utilities)} />
-            <Line label="Insurance" value={money(-e.insurance)} />
-            <Line label="Property tax (at purchase price)" value={money(-e.propertyTax)} />
-            {e.hoa > 0 && <Line label="HOA" value={money(-e.hoa)} />}
-            <Line label="Other (pool, lawn, pest, software)" value={money(-e.other)} />
-            <Line label="Supplies & maintenance" value={money(-e.suppliesMaintenance)} />
-            <Line label="Capital reserve" value={money(-e.capexReserve)} />
-            {e.management > 0 && <Line label="Management" value={money(-e.management)} />}
-            <Line label="Net operating income" value={money(m.noi)} strong negative={(m.noi ?? 0) < 0} />
+            <Line label="Airbnb host fee" value={money(-e.hostFees)} show={showWorking}
+              from={`${inputs.revenue.hostFeePct ?? 0}% of gross revenue — what Airbnb keeps from the host side. Settings › Airbnb host fee.`} />
+            <Line label="Cleaning" value={money(-e.cleaning)} show={showWorking}
+              from={`${Math.round(m.nightsBooked)} booked nights ÷ ${inputs.revenue.avgStayNights ?? 3}-night average stay = ${Math.round(m.nightsBooked / (inputs.revenue.avgStayNights ?? 3))} turnovers × ${money(market.expenses.cleaningCostPerTurn)} a turn. Both numbers are yours: Settings › ${market.label} › Cleaning per turnover, and Settings › Average stay.`} />
+            <Line label="Utilities" value={money(-e.utilities)} show={showWorking}
+              from={`${money(market.expenses.utilitiesMonthly)} a month × 12 — power, water, internet, TV. Settings › ${market.label}.`} />
+            <Line label="Insurance" value={money(-e.insurance)} show={showWorking}
+              from={`Your figure for this market, straight through. Settings › ${market.label} › Insurance / year.`} />
+            <Line label="Property tax (at purchase price)" value={money(-e.propertyTax)} show={showWorking}
+              from={`${money(m.price)} × ${market.expenses.propertyTaxPct ?? 0}%, charged on what you pay rather than on today's assessment — most states reassess at the sale${market.state === "Florida" ? ", and Florida certainly does" : ""}. Rate is yours: Settings › ${market.label} › Property tax.`} />
+            {e.hoa > 0 && <Line label="HOA" value={money(-e.hoa)} show={showWorking}
+              from={`${money(home.hoaMonthly)} a month × 12, from this listing's own Redfin record.`} />}
+            <Line label="Other (pool, lawn, pest, software)" value={money(-e.other)} show={showWorking}
+              from={`${money(market.expenses.otherMonthly)} a month × 12. Settings › ${market.label} › Other / month.`} />
+            <Line label="Supplies & maintenance" value={money(-e.suppliesMaintenance)} show={showWorking}
+              from={`${market.expenses.suppliesMaintenancePct ?? 0}% of gross revenue. Settings › ${market.label}.`} />
+            <Line label="Capital reserve" value={money(-e.capexReserve)} show={showWorking}
+              from={`${market.expenses.capexReservePct ?? 0}% of gross revenue set aside for roof, AC and appliances. Not a bill — money you keep. Settings › ${market.label}.`} />
+            {e.management > 0 && <Line label="Management" value={money(-e.management)} show={showWorking}
+              from={`${market.expenses.managementPct ?? 0}% of gross revenue. Zero if you manage it yourself. Settings › ${market.label}.`} />}
+            <Line label="Net operating income" value={money(m.noi)} strong negative={(m.noi ?? 0) < 0} show={showWorking}
+              from="Gross revenue less every line above. Before any loan payment." />
           </>
         )}
       </div>
       <div>
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Financing</p>
-        <Line label={`Down payment (${inputs.loan.downPaymentPct ?? 0}%)`} value={money(m.downPayment)} />
-        <Line label="Closing costs" value={money(m.closingCosts)} />
-        <Line label="Furnishing & setup" value={money(m.furnishing)} />
-        <Line label="Cash needed" value={money(m.cashNeeded)} strong />
-        <Line label="Drawn from equity line" value={money(m.helocDraw)} />
-        <Line label="From your own cash" value={money(m.ownCash)} />
-        <Line label="Mortgage amount" value={money(m.loanAmount)} />
-        <Line label="Mortgage payments / yr" value={money(-m.mortgageAnnual)} />
-        <Line label={`Equity line ${inputs.heloc.interestOnly ? "interest" : "payments"} / yr`} value={money(-m.helocAnnual)} />
-        <Line label="Cash flow / yr" value={money(m.cashFlow)} strong negative={(m.cashFlow ?? 0) < 0} />
-        <Line label="Cash flow / month" value={money(m.cashFlow === null ? null : m.cashFlow / 12)} />
-        <Line label="Break-even occupancy" value={pct(m.breakEvenOccupancy, 0)} />
+        <Line label={`Down payment (${inputs.loan.downPaymentPct ?? 0}%)`} value={money(m.downPayment)} show={showWorking}
+          from={`${money(m.price)} × ${inputs.loan.downPaymentPct ?? 0}%. Settings › Loan › Down payment.`} />
+        <Line label="Closing costs" value={money(m.closingCosts)} show={showWorking}
+          from={(inputs.loan.closingCostPct ?? 0) === 0
+            ? "Zero, because you set it to zero — your own brokerage handles the buy side. Settings › Loan."
+            : `${money(m.price)} × ${inputs.loan.closingCostPct}%. Settings › Loan › Closing costs.`} />
+        <Line label="Furnishing & setup" value={money(m.furnishing)} show={showWorking}
+          from={`A flat figure you set, not per square foot. Settings › Loan › Furnishing & setup.`} />
+        <Line label="Cash needed" value={money(m.cashNeeded)} strong show={showWorking}
+          from="Down payment + closing costs + furnishing. Everything due before the first guest." />
+        <Line label="Drawn from equity line" value={money(m.helocDraw)} show={showWorking}
+          from={`The smaller of what this deal needs and ${money(helocAvailable)} still free on the line. Each house is checked on its own, as though the whole line were available.`} />
+        <Line label="From your own cash" value={money(m.ownCash)} show={showWorking}
+          from="Whatever the equity line doesn't cover." />
+        <Line label="Mortgage amount" value={money(m.loanAmount)} show={showWorking}
+          from={`${money(m.price)} less the down payment.`} />
+        <Line label="Mortgage payments / yr" value={money(-m.mortgageAnnual)} show={showWorking}
+          from={`${money(m.loanAmount)} at ${inputs.loan.ratePct ?? 0}% over ${inputs.loan.termYears ?? 30} years, principal and interest, ×12. Settings › Loan.`} />
+        <Line label={`Equity line ${inputs.heloc.interestOnly ? "interest" : "payments"} / yr`} value={money(-m.helocAnnual)} show={showWorking}
+          from={inputs.heloc.interestOnly
+            ? `${money(m.helocDraw)} drawn × ${inputs.heloc.ratePct ?? 0}%, interest only — no principal. Settings › Home equity line.`
+            : `${money(m.helocDraw)} repaid over ${inputs.heloc.repayYears ?? 10} years at ${inputs.heloc.ratePct ?? 0}%. Settings › Home equity line.`} />
+        <Line label="Cash flow / yr" value={money(m.cashFlow)} strong negative={(m.cashFlow ?? 0) < 0} show={showWorking}
+          from="Net operating income less both loan payments. Before income tax — that's in the ten-year view." />
+        <Line label="Cash flow / month" value={money(m.cashFlow === null ? null : m.cashFlow / 12)} show={showWorking}
+          from="The yearly figure ÷ 12. Bookings are seasonal, so no single month looks like this." />
+        <Line label="Break-even occupancy" value={pct(m.breakEvenOccupancy, 0)} show={showWorking}
+          from="How full it has to run to cover every bill and both loan payments. Below this it costs you money." />
         {m.returnOnBorrowed !== null && (
           <div className={`mt-3 p-3 rounded-xl text-sm ${(m.borrowedSpread ?? 0) >= 0 ? "bg-emerald-50 border border-emerald-100" : "bg-red-50 border border-red-100"}`}>
             <p className={`font-semibold ${(m.borrowedSpread ?? 0) >= 0 ? "text-emerald-900" : "text-red-900"}`}>
@@ -1044,7 +1118,7 @@ function DealDetail({ home, inputs, market, samples, occupancy, helocAvailable, 
 
       </div>
       <div className="space-y-6">
-        <ProjectionPanel p={projection} inputs={inputs} />
+        <ProjectionPanel p={projection} inputs={inputs} showWorking={showWorking} />
         <CountyPanel home={home} market={market} onRefresh={onRefreshCounty} refreshing={refreshing} />
       </div>
     </div>
